@@ -50,6 +50,14 @@ def _build_parser() -> argparse.ArgumentParser:
     sk_resolve.add_argument("--framework", action="append", default=[])
     sk_resolve.add_argument("--indicator", action="append", default=[])
 
+    prof = sub.add_parser("profile", help="profile a source directory or URL")
+    prof.add_argument("--path", help="local source directory to profile")
+    prof.add_argument("--url", help="URL to profile (stub in Phase 4)")
+
+    plan = sub.add_parser("plan", help="break a repo into analysis tasks")
+    plan.add_argument("--path", required=True, help="local source directory")
+    plan.add_argument("--skills-dir", default="skills")
+
     return parser
 
 
@@ -147,6 +155,48 @@ def _cmd_skills(args: argparse.Namespace) -> int:
     return 2
 
 
+def _cmd_profile(args: argparse.Namespace) -> int:
+    import json
+
+    from .profiling.profiler import profile_directory, profile_url
+
+    if args.path:
+        profile = profile_directory(args.path)
+    elif args.url:
+        profile = profile_url(args.url)
+    else:
+        print("error: provide --path or --url", file=sys.stderr)
+        return 2
+    print(json.dumps(profile.to_dict(), indent=2))
+    return 0
+
+
+def _cmd_plan(args: argparse.Namespace) -> int:
+    import json
+
+    from .orchestrator.planner import break_repository_into_tasks
+    from .profiling.profiler import profile_directory
+    from .skills.registry import SkillRegistry
+    from .skills.resolver import SkillResolver
+
+    profile = profile_directory(args.path)
+    plan = break_repository_into_tasks(args.path, profile)
+
+    registry = SkillRegistry()
+    try:
+        registry.load_dir(args.skills_dir)
+    except FileNotFoundError:
+        pass
+    resolver = SkillResolver(registry)
+    relevant = resolver.skill_names(profile)
+
+    out = plan.to_dict()
+    out["relevant_skills"] = relevant
+    out["required_capabilities"] = plan.capability_union
+    print(json.dumps(out, indent=2))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     if args.command == "run":
@@ -155,6 +205,10 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_tools(args)
     if args.command == "skills":
         return _cmd_skills(args)
+    if args.command == "profile":
+        return _cmd_profile(args)
+    if args.command == "plan":
+        return _cmd_plan(args)
     return 2
 
 
