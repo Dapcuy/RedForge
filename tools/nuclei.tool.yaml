@@ -1,0 +1,13 @@
+name: nuclei
+domain: web
+capabilities:
+  - vulnerability-scanning
+  - template-scanning
+runtime:
+  image: redforge/web-runtime
+  entrypoint: nuclei
+  version: 3.3.x
+inputs:
+  target: url
+output:
+  format: jsonl

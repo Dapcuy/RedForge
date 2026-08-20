@@ -1,0 +1,13 @@
+name: httpx
+domain: web
+capabilities:
+  - http-analysis
+  - technology-detection
+runtime:
+  image: redforge/web-runtime
+  entrypoint: httpx
+  version: 1.6.x
+inputs:
+  target: url
+output:
+  format: json

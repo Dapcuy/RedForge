@@ -1,0 +1,13 @@
+name: slither
+domain: web3
+capabilities:
+  - static-analysis
+  - solidity-analysis
+runtime:
+  image: redforge/web3-runtime
+  entrypoint: slither
+  version: 0.10.x
+inputs:
+  target: source-dir
+output:
+  format: json

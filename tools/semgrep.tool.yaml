@@ -1,0 +1,13 @@
+name: semgrep
+domain: code
+capabilities:
+  - static-analysis
+  - source-scanning
+runtime:
+  image: redforge/code-runtime
+  entrypoint: semgrep
+  version: 1.x
+inputs:
+  target: source-dir
+output:
+  format: json

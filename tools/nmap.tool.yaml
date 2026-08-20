@@ -1,0 +1,13 @@
+name: nmap
+domain: network
+capabilities:
+  - port-scanning
+  - service-detection
+runtime:
+  image: redforge/privileged
+  entrypoint: nmap
+  version: 7.95
+inputs:
+  target: host
+output:
+  format: xml

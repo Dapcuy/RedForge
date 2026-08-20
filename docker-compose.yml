@@ -1,0 +1,47 @@
+# RedForge security runtime — bootstrap the per-domain runtime images.
+#
+# Usage:
+#   docker compose build
+#   docker compose up -d          # builds + starts the base security runtime
+#
+# Each service maps to a domain runtime under runtimes/<domain>/Dockerfile.
+# The `privileged` runtime is NOT started by default (see policy gate).
+
+services:
+  base:
+    build:
+      context: ./runtimes/base
+      dockerfile: Dockerfile
+    image: redforge/base:latest
+
+  web:
+    build:
+      context: ./runtimes/web
+      dockerfile: Dockerfile
+    image: redforge/web-runtime:latest
+    depends_on:
+      - base
+
+  code:
+    build:
+      context: ./runtimes/code
+      dockerfile: Dockerfile
+    image: redforge/code-runtime:latest
+    depends_on:
+      - base
+
+  web3:
+    build:
+      context: ./runtimes/web3
+      dockerfile: Dockerfile
+    image: redforge/web3-runtime:latest
+    depends_on:
+      - base
+
+  # privileged: intentionally commented out. Enable only when policy
+  # allow_privileged_runtime=true.
+  # privileged:
+  #   build: ./runtimes/privileged
+  #   image: redforge/privileged:latest
+  #   cap_add: [NET_ADMIN, NET_RAW]
+  #   network_mode: host
