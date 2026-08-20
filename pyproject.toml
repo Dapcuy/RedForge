@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "redforge"
+version = "0.1.0"
+description = "Modular AI security research platform — knowledge + reasoning + capability + execution + validation."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary (Phase 0 — see docs/architecture/LICENSING.md)" }
+authors = [{ name = "Dapcuy" }]
+keywords = ["security", "appsec", "web3", "ai", "orchestration", "docker"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "ruff", "mypy"]
+
+[tool.setuptools.packages.find]
+include = ["core*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"

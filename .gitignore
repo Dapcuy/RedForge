@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node / web dashboard
+node_modules/
+web/dashboard/.next/
+web/dashboard/out/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Evidence & run artifacts (never commit live evidence)
+runs/
+evidence_store/
+artifacts/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
