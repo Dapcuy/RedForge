@@ -135,13 +135,12 @@ class ToolExecutionService:
         if workspace is None:
             return request
         args = dict(request.arguments)
-        if args.get("path"):
-            rel = args["path"]
-            if rel.startswith(workspace.container_path):
-                # already a container path
-                return request
-            args["path"] = f"{workspace.container_path}/{rel.lstrip('/')}"
-            request.arguments = args
+        # Rewrite workspace-relative file arguments to container paths.
+        for key in ("path", "config"):
+            if args.get(key) and not str(args[key]).startswith(workspace.container_path):
+                rel = str(args[key]).lstrip("./")
+                args[key] = f"{workspace.container_path}/{rel}"
+        request.arguments = args
         return request
 
     def execute(self, request: ToolRequest) -> ExecutionOutcome:
@@ -171,10 +170,25 @@ class ToolExecutionService:
             ctx = RunContext(run_id=run_id, timeout_s=limits.timeout_s, env=request.arguments.get("env", {}))
 
             # Tool arguments: for source tools, the (container-remapped) path is
-            # passed explicitly; otherwise the raw target value is used by the runtime.
+            # passed explicitly, followed by any additional tool arguments
+            # (e.g. --json for semgrep). Without a workspace, the raw target
+            # value is used by the runtime.
             tool_args: list[str] | None = None
             if workspace is not None and request.arguments.get("path"):
                 tool_args = [request.arguments["path"]]
+                for key, val in request.arguments.items():
+                    if key in {"path", "env"}:
+                        continue
+                    if isinstance(val, list):
+                        tool_args.extend(str(v) for v in val)
+                    elif isinstance(val, bool):
+                        if val:
+                            tool_args.append(f"--{key}")
+                    else:
+                        tool_args.append(f"--{key}={val}")
+            elif workspace is None and request.arguments.get("flags"):
+                # Non-workspace tools may still receive explicit flags.
+                tool_args = list(request.arguments["flags"])
 
             command = self.runtime.command_for(tool, request.target, ctx, limits, workspace, tool_args)
             started_at = utcnow_iso()

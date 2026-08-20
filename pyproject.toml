@@ -30,5 +30,10 @@ target-version = "py311"
 # BLE001: blind except Exception — integration adapters catch-and-record.
 ignore = ["PLW1510", "BLE001"]
 
+[tool.pytest.ini_options]
+markers = [
+    "docker_e2e: real Docker end-to-end tests (require a live daemon)",
+]
+
 [tool.mypy]
 python_version = "3.11"

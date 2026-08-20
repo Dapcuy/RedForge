@@ -24,16 +24,35 @@ and SQLite persistence all exist and are unit/integration/E2E tested.
 image is built and exercised by `tests/test_docker_e2e.py` — it verifies real
 container execution, workspace mounting (read-only `/workspace`), artifact
 creation, evidence creation, and SQLite persistence against a live Docker
-daemon. The **production tool images** (nuclei/semgrep/slither/foundry/...)
-are still not built/smoke-tested with the actual tools.
+daemon.
+
+**Real Docker source-scan vertical slice (3rd pass):** the `code-runtime`
+image (Semgrep **1.95.0** pinned) is built, and `tests/test_semgrep_e2e.py`
+runs the **actual Semgrep binary** against a vulnerable fixture mounted at
+`/workspace:ro`. It proves the full production-like flow:
+
+```
+host/tests/fixtures/vuln_app/app.py
+        │  (mounted read-only)
+        ▼
+container:/workspace/app.py
+        │
+        ▼
+semgrep /workspace --json --config=/workspace/semgrep-rules.yml
+        │
+        ▼
+Artifact → Evidence → Correlation → Finding (confirmed) → SQLite
+```
+
+The Semgrep result is real (not faked), and the finding is persisted with
+provenance (scan_id, tool_run_id, artifact_id, evidence_id, file path, line).
 
 **Not yet fully functional (requires live wiring):** agents are not yet wired
 to a live LLM, and the dashboard is a skeleton.
 
 ```text
 01. Architecture        ✅  Phase 0
-02. Docker Runtime      🟡  Phase 1 (interface + workspace mount + E2E test runtime verified;
-                            production tool images not smoke-tested)
+02. Docker Runtime      ✅  Phase 1 (code-runtime built; real Semgrep 1.95.0 source scan validated in Docker)
 03. Tool Registry       ✅  Phase 1 (10 tool manifests, pinned versions, trust, input schema)
 04. Skill Engine        ✅  Phase 2 (parser + registry + resolver, schema v2)
 05. Evidence/Finding    ✅  Phase 3 (dedup + correlation + judge + REJECTED + lifecycle)

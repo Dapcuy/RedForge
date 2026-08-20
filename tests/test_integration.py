@@ -97,7 +97,8 @@ def test_integration_runtime_error_propagates():
 def test_integration_resolves_capability_to_correct_tool():
     rt = _FakeRuntime()
     svc = _svc(rt, external_targets=True)
-    outcome = svc.execute(_request("static-analysis"))
-    # multiple static-analysis tools exist; the resolver picks a registered one
-    assert "static-analysis" in [c for c in outcome.tool_run.capability.split(",") if c] or \
-        outcome.tool_run.tool_name in {"semgrep", "slither", "mythril"}
+    req = _request("static-analysis")
+    # semgrep has the highest priority for static-analysis and requires a path
+    req.arguments = {"path": "src"}
+    outcome = svc.execute(req)
+    assert outcome.tool_run.tool_name == "semgrep"

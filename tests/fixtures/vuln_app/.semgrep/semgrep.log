@@ -1,0 +1,88 @@
+2026-08-20 13:24:41,754 - semgrep.run_scan - DEBUG - semgrep version 1.95.0
+2026-08-20 13:24:41,773 - semgrep.git - DEBUG - Failed to get project url from 'git ls-remote': Command failed with exit code: 128
+-----
+Command failed with output:
+fatal: No remote configured to list refs from.
+
+
+Failed to run 'git ls-remote --get-url'. Possible reasons:
+
+- the git binary is not available
+- the current working directory is not a git repository
+- the baseline commit is not a parent of the current commit
+    (if you are running through semgrep-app, check if you are setting `SEMGREP_BRANCH` or `SEMGREP_BASELINE_COMMIT` properly)
+- the current working directory is not marked as safe
+    (fix with `git config --global --add safe.directory $(pwd)`)
+
+Try running the command yourself to debug the issue.
+2026-08-20 13:24:41,774 - semgrep.config_resolver - DEBUG - Loading local config from /workspace/semgrep-rules.yml
+2026-08-20 13:24:41,785 - semgrep.config_resolver - DEBUG - Done loading local config from /workspace/semgrep-rules.yml
+2026-08-20 13:24:41,791 - semgrep.config_resolver - DEBUG - Saving rules to /workspace-tmp/semgrep-68dzb50s.rules
+2026-08-20 13:24:42,175 - semgrep.rule_lang - DEBUG - semgrep-core validation response: valid=True
+2026-08-20 13:24:42,176 - semgrep.rule_lang - DEBUG - semgrep-core validation succeeded
+2026-08-20 13:24:42,177 - semgrep.rule_lang - DEBUG - RPC validation succeeded
+2026-08-20 13:24:42,178 - semgrep.config_resolver - DEBUG - loaded 1 configs in 0.403886079788208
+2026-08-20 13:24:42,179 - semgrep.run_scan - VERBOSE - running 4 rules from 1 config /workspace/semgrep-rules.yml_0
+2026-08-20 13:24:42,180 - semgrep.run_scan - VERBOSE - No .semgrepignore found. Using default .semgrepignore rules. See the docs for the list of default ignores: https://semgrep.dev/docs/cli-usage/#ignore-files
+2026-08-20 13:24:42,185 - semgrep.run_scan - VERBOSE - Rules:
+2026-08-20 13:24:42,185 - semgrep.run_scan - VERBOSE - - workspace.fixture-eval-user-input
+2026-08-20 13:24:42,186 - semgrep.run_scan - VERBOSE - - workspace.fixture-hardcoded-password
+2026-08-20 13:24:42,186 - semgrep.run_scan - VERBOSE - - workspace.fixture-shell-true
+2026-08-20 13:24:42,186 - semgrep.run_scan - VERBOSE - - workspace.fixture-sqli-concat
+2026-08-20 13:24:42,196 - semgrep.target_manager - VERBOSE - Unable to ignore files ignored by git (/workspace is not a git directory or git is not installed). Running on all files instead...
+2026-08-20 13:24:42,294 - semgrep.core_runner - DEBUG - Passing whole rules directly to semgrep_core
+2026-08-20 13:24:42,303 - semgrep.core_runner - DEBUG - Running Semgrep engine with command:
+2026-08-20 13:24:42,303 - semgrep.core_runner - DEBUG - /usr/local/lib/python3.11/site-packages/semgrep/bin/semgrep-core -json -rules /workspace-tmp/tmp9mssuxjg.json -j 12 -targets /workspace-tmp/tmpnern4xx4 -timeout 5 -timeout_threshold 3 -max_memory 0 -fast
+2026-08-20 13:24:42,994 - semgrep.core_runner - DEBUG - --- semgrep-core stderr ---
+[00.10][[34mINFO[0m]: Executed as: /usr/local/lib/python3.11/site-packages/semgrep/bin/semgrep-core -json -rules /workspace-tmp/tmp9mssuxjg.json -j 12 -targets /workspace-tmp/tmpnern4xx4 -timeout 5 -timeout_threshold 3 -max_memory 0 -fast
+[00.10][[34mINFO[0m]: Version: 1.95.0
+[00.10][[34mINFO[0m]: Parsing rules in /workspace-tmp/tmp9mssuxjg.json
+[00.13][[34mINFO[0m]: scan: processing 1 files (skipping 0), with 4 rules (skipping 0 )
+--- end semgrep-core stderr ---
+2026-08-20 13:24:43,192 - semgrep.core_runner - DEBUG - semgrep ran in 0:00:00.897934 on 1 files
+2026-08-20 13:24:43,192 - semgrep.core_runner - DEBUG - findings summary: 3 error, 1 warning
+2026-08-20 13:24:43,206 - semgrep.output - VERBOSE - 
+========================================
+Files skipped:
+========================================
+
+  Always skipped by Semgrep:
+
+   • <none>
+
+  Skipped by .gitignore:
+  (Disable by passing --no-git-ignore)
+
+   • <all files not listed by `git ls-files` were skipped>
+
+  Skipped by .semgrepignore:
+  - https://semgrep.dev/docs/ignoring-files-folders-code/#understand-semgrep-defaults
+
+   • <none>
+
+  Skipped by --include patterns:
+
+   • <none>
+
+  Skipped by --exclude patterns:
+
+   • <none>
+
+  Files skipped due to insufficient read permissions:
+
+   • <none>
+
+  Skipped by limiting to files smaller than 1000000 bytes:
+  (Adjust with the --max-target-bytes flag)
+
+   • <none>
+
+  Partially analyzed due to parsing or internal Semgrep errors
+
+   • <none>
+
+2026-08-20 13:24:43,208 - semgrep.output - INFO - 
+Ran 4 rules on 1 file: 4 findings.
+2026-08-20 13:24:43,217 - semgrep.app.version - DEBUG - Version cache does not exist
+2026-08-20 13:25:07,226 - semgrep.app.version - DEBUG - Fetching latest version failed to connect: HTTPSConnectionPool(host='semgrep.dev', port=443): Max retries exceeded with url: /api/check-version (Caused by NameResolutionError("HTTPSConnection(host='semgrep.dev', port=443): Failed to resolve 'semgrep.dev' ([Errno -3] Temporary failure in name resolution)"))
+2026-08-20 13:25:07,227 - semgrep.metrics - VERBOSE - Not sending pseudonymous metrics since metrics are configured to AUTO and registry usage is False

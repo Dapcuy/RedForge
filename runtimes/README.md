@@ -7,9 +7,9 @@ maintainability win.
 
 ```
 runtimes/
-├── base/         # python 3.11-slim + node + go + curl/git (shared base)
+├── base/         # python 3.11-slim + node + go + curl/git (shared base) — BUILT
 ├── web/          # httpx, nuclei, ffuf (built on base)
-├── code/         # semgrep (built on base)
+├── code/         # semgrep==1.95.0 (pinned) — BUILT + validated by real Docker E2E
 ├── web3/         # foundry, slither, echidna, mythril (built on base)
 ├── privileged/   # nmap (needs host/network access; gated by policy)
 └── test/         # tiny deterministic e2e tool (Docker E2E test only, not production)
@@ -18,13 +18,16 @@ runtimes/
 ## Build
 
 ```bash
+docker build -t redforge/base:latest runtimes/base
+docker build -t redforge/code-runtime:latest runtimes/code
 docker compose build            # build all production images
 docker compose build test       # build the tiny E2E test runtime
 ```
 
-The `test` image (`redforge/test-runtime`) is **not** a production tool image;
-it exists solely to prove workspace mounting + artifact/evidence capture inside
-Docker via `tests/test_docker_e2e.py`.
+`redforge/code-runtime` is the first **real production tool image** that has
+been validated: it installs Semgrep **1.95.0** (pinned in the Dockerfile, must
+match `tools/semgrep.tool.yaml`), and `tests/test_semgrep_e2e.py` runs the real
+binary against a vulnerable fixture mounted at `/workspace:ro`.
 
 ## Workspace mounting
 

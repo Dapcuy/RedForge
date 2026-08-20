@@ -1,0 +1,28 @@
+# Local Semgrep rules for the deterministic vulnerable fixture.
+# These rules are intentionally simple so the E2E test is offline + deterministic.
+rules:
+  - id: fixture-eval-user-input
+    languages: [python]
+    severity: ERROR
+    message: "Fixture: eval on user-controlled expression"
+    patterns:
+      - pattern: eval($X)
+  - id: fixture-shell-true
+    languages: [python]
+    severity: ERROR
+    message: "Fixture: subprocess with shell=True"
+    patterns:
+      - pattern: subprocess.check_output(..., shell=True)
+  - id: fixture-sqli-concat
+    languages: [python]
+    severity: ERROR
+    message: "Fixture: SQL string concatenation"
+    patterns:
+      - pattern-either:
+          - pattern: $C.execute("..." + $X + "...")
+  - id: fixture-hardcoded-password
+    languages: [python]
+    severity: WARNING
+    message: "Fixture: hardcoded password"
+    patterns:
+      - pattern: $X = "super-secret-password"

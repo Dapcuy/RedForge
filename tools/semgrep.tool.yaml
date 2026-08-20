@@ -7,10 +7,29 @@ runtime:
   image: redforge/code-runtime
   entrypoint: semgrep
   version: 1.95.0
+priority: 10
 inputs:
   target: source-dir
+  path:
+    type: string
+    required: true
+    description: Path inside the workspace to scan (remapped to /workspace)
+  json:
+    type: boolean
+    description: Emit JSON output
+  config:
+    type: string
+    description: Semgrep config/ruleset (e.g. p/security-audit)
 output:
   format: json
+input_schema:
+  path:
+    type: string
+    required: true
+  json:
+    type: boolean
+  config:
+    type: string
 trust:
   verified: false
   source: semgrep/semgrep (official release)

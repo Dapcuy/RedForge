@@ -18,7 +18,14 @@ from typing import Literal
 
 from ..evidence.models import Evidence, EvidenceType
 from ..execution.models import Artifact, ToolRun
-from ..findings.models import Confidence, Finding, FindingStatus, Severity
+from ..findings.models import (
+    Confidence,
+    EvidenceLocation,
+    EvidenceLocationKind,
+    Finding,
+    FindingStatus,
+    Severity,
+)
 
 
 class _Transaction:
@@ -133,7 +140,7 @@ class SqliteStore:
                 id TEXT PRIMARY KEY, title TEXT, severity TEXT, confidence TEXT,
                 status TEXT, affected_component TEXT, root_cause TEXT,
                 attack_path TEXT, evidence TEXT, reproduction TEXT,
-                remediation TEXT, refs TEXT
+                remediation TEXT, refs TEXT, locations TEXT
             );
             """
         )
@@ -379,12 +386,13 @@ class SqliteStore:
         self._conn.execute(
             """INSERT OR REPLACE INTO findings
                (id, title, severity, confidence, status, affected_component, root_cause,
-                attack_path, evidence, reproduction, remediation, refs)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                attack_path, evidence, reproduction, remediation, refs, locations)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (finding.id, finding.title, finding.severity.value, finding.confidence.value,
              finding.status.value, finding.affected_component, finding.root_cause,
              finding.attack_path, json.dumps(finding.evidence), finding.reproduction,
-             finding.remediation, json.dumps(finding.references)),
+             finding.remediation, json.dumps(finding.references),
+             json.dumps([loc.to_dict() for loc in finding.locations])),
         )
         self._commit()
 
@@ -399,6 +407,10 @@ class SqliteStore:
             attack_path=row["attack_path"] or "", evidence=json.loads(row["evidence"] or "[]"),
             reproduction=row["reproduction"] or "", remediation=row["remediation"] or "",
             references=json.loads(row["refs"] or "[]"),
+            locations=[
+                EvidenceLocation(kind=EvidenceLocationKind(loc["kind"]), value=loc["value"])
+                for loc in json.loads(row["locations"] or "[]")
+            ],
         )
 
     def list_findings(self) -> list[Finding]:

@@ -144,6 +144,16 @@ class DockerRuntime(Runtime):
         cmd += self._limit_flags(limits, workspace)
         for key, val in ctx.env.items():
             cmd += ["-e", f"{key}={val}"]
+        if workspace is not None:
+            # Tools that need a writable home/cache (semgrep writes ~/.semgrep
+            # and temp files) get HOME + TMPDIR redirected to the controlled
+            # writable tmp dir, which is mounted rw even when the root
+            # filesystem is read-only.
+            cmd += [
+                "-e", f"HOME={workspace.writable_tmp}",
+                "-e", f"SEMGREP_HOME={workspace.writable_tmp}",
+                "-e", f"TMPDIR={workspace.writable_tmp}",
+            ]
         cmd += [image, tool.entrypoint]
         # Tool arguments: explicit args win over the raw target value.
         if args:
