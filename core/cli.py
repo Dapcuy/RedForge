@@ -40,6 +40,16 @@ def _build_parser() -> argparse.ArgumentParser:
     tl_resolve.add_argument("--capability", required=True)
     tl_resolve.add_argument("--tools-dir", default=DEFAULT_TOOLS_DIR)
 
+    sk = sub.add_parser("skills", help="skill engine commands")
+    sksub = sk.add_subparsers(dest="skills_cmd", required=True)
+    sk_list = sksub.add_parser("list", help="list loaded skills")
+    sk_list.add_argument("--skills-dir", default="skills")
+    sk_resolve = sksub.add_parser("resolve", help="resolve skills for a target profile")
+    sk_resolve.add_argument("--skills-dir", default="skills")
+    sk_resolve.add_argument("--technology", action="append", default=[])
+    sk_resolve.add_argument("--framework", action="append", default=[])
+    sk_resolve.add_argument("--indicator", action="append", default=[])
+
     return parser
 
 
@@ -99,12 +109,52 @@ def _cmd_tools(args: argparse.Namespace) -> int:
     return 2
 
 
+def _cmd_skills(args: argparse.Namespace) -> int:
+    from .models import Target, TargetKind, TargetProfile
+    from .skills.registry import SkillRegistry
+    from .skills.resolver import SkillResolver
+
+    registry = SkillRegistry()
+    try:
+        n = registry.load_dir(args.skills_dir)
+    except FileNotFoundError:
+        n = 0
+    if n == 0:
+        print(f"warning: no SKILL.md found under {args.skills_dir!r}", file=sys.stderr)
+
+    if args.skills_cmd == "list":
+        for name in registry.names():
+            s = registry.get(name)
+            print(f"{name:24} [{s.domain}] requires={','.join(s.requires)}")
+        return 0
+
+    if args.skills_cmd == "resolve":
+        profile = TargetProfile(
+            target=Target(TargetKind.URL, "<profile>"),
+            technologies=args.technology,
+            frameworks=args.framework,
+            indicators=args.indicator,
+        )
+        resolver = SkillResolver(registry)
+        matches = resolver.resolve(profile)
+        if not matches:
+            print("no matching skills")
+            return 0
+        for m in matches:
+            print(f"{m.skill:24} specificity={m.specificity} matched_on={m.matched_on}")
+        print("\nrequired capabilities:", resolver.required_capabilities(profile))
+        return 0
+    return 2
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     if args.command == "run":
         return _cmd_run(args)
     if args.command == "tools":
         return _cmd_tools(args)
+    if args.command == "skills":
+        return _cmd_skills(args)
     return 2
 
 
