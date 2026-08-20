@@ -1,0 +1,22 @@
+# Normalize line endings across OS (CRLF on Windows checkout, LF in repo)
+* text=auto
+
+# Explicitly text
+*.md text
+*.py text
+*.yaml text
+*.yml text
+*.toml text
+*.json text
+*.js text
+*.ts text
+*.sh text eol=lf
+Dockerfile text eol=lf
+
+# Explicitly binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.woff binary
+*.woff2 binary
