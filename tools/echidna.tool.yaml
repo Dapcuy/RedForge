@@ -1,0 +1,13 @@
+name: echidna
+domain: web3
+capabilities:
+  - fuzzing
+  - invariant-testing
+runtime:
+  image: redforge/web3-runtime
+  entrypoint: echidna
+  version: 2.x
+inputs:
+  target: source-dir
+output:
+  format: text

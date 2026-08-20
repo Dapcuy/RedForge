@@ -1,0 +1,13 @@
+name: mythril
+domain: web3
+capabilities:
+  - static-analysis
+  - symbolic-execution
+runtime:
+  image: redforge/web3-runtime
+  entrypoint: myth
+  version: 0.24.x
+inputs:
+  target: source-dir
+output:
+  format: json

@@ -26,10 +26,11 @@ def test_resolve_vulnerability_scanning(registry):
     assert tool.name == "nuclei"
 
 
-def test_resolve_static_analysis_prefers_semgrep(registry):
-    # both semgrep and slither satisfy static-analysis; default order -> semgrep
+def test_resolve_static_analysis_returns_static_tool(registry):
+    # multiple tools satisfy static-analysis (semgrep, slither, mythril);
+    # default resolution returns the first registered one.
     tool = registry.resolve_capability("static-analysis")
-    assert tool.name in {"semgrep", "slither"}
+    assert "static-analysis" in tool.capabilities
 
 
 def test_resolve_unknown_capability_raises(registry):

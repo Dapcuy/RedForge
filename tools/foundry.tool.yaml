@@ -1,0 +1,14 @@
+name: foundry
+domain: web3
+capabilities:
+  - solidity-testing
+  - poc
+  - mainnet-fork
+runtime:
+  image: redforge/web3-runtime
+  entrypoint: forge
+  version: latest
+inputs:
+  target: source-dir
+output:
+  format: text

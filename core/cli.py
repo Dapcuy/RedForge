@@ -58,6 +58,10 @@ def _build_parser() -> argparse.ArgumentParser:
     plan.add_argument("--path", required=True, help="local source directory")
     plan.add_argument("--skills-dir", default="skills")
 
+    w3 = sub.add_parser("web3", help="run the Solidity security pipeline")
+    w3.add_argument("--path", required=True, help="path to Solidity source (Foundry project)")
+    w3.add_argument("--json", action="store_true", help="emit machine-readable JSON")
+
     return parser
 
 
@@ -197,6 +201,30 @@ def _cmd_plan(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_web3(args: argparse.Namespace) -> int:
+    import json
+    import uuid
+
+    from .web3.pipeline import Web3Pipeline
+
+    pipe = Web3Pipeline(args.path, run_id=str(uuid.uuid4())[:8])
+    findings = pipe.run()
+
+    if args.json:
+        print(json.dumps([f.to_dict() for f in findings], indent=2))
+    else:
+        if not findings:
+            print("no findings")
+            return 0
+        for f in findings:
+            print(f"[{f.severity.value.upper():5}] {f.title}  ({f.status.value})")
+            if f.root_cause:
+                print(f"         root cause: {f.root_cause}")
+            if f.affected_component:
+                print(f"         component: {f.affected_component}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     if args.command == "run":
@@ -209,6 +237,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_profile(args)
     if args.command == "plan":
         return _cmd_plan(args)
+    if args.command == "web3":
+        return _cmd_web3(args)
     return 2
 
 
