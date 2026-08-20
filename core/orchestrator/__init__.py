@@ -11,9 +11,10 @@ It does NOT do multi-agent dispatch yet (that is Phase 8); the MVP is a
 deterministic single-agent planner.
 """
 from .planner import (
-    Task,
     Plan,
+    Task,
     break_repository_into_tasks,
 )
+from .scan import Orchestrator, ScanResult
 
-__all__ = ["Task", "Plan", "break_repository_into_tasks"]
+__all__ = ["Orchestrator", "Plan", "ScanResult", "Task", "break_repository_into_tasks"]

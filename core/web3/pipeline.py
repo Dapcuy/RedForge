@@ -12,9 +12,10 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable
+from typing import Any
 
 from ..evidence.models import Evidence, make_evidence
 from ..findings.engine import FindingEngine
@@ -92,7 +93,9 @@ class Web3Pipeline:
 
     def _emit(self, stage: PipelineStage, tool: str, raw: str) -> Evidence:
         self.stages_run.append(stage)
-        ev = make_evidence(run_id=self.run_id, tool=tool, target=self.root, raw=raw)
+        ev = make_evidence(
+            scan_id="", tool_run_id=self.run_id, tool=tool, target=self.root, raw=raw, source=tool,
+        )
         self.evidence.append(ev)
         return ev
 

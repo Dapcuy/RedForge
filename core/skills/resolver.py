@@ -65,6 +65,32 @@ class SkillResolver:
     def skill_names(self, profile: TargetProfile) -> list[str]:
         return [m.skill for m in self.resolve(profile)]
 
+    def expanded_skill_names(self, profile: TargetProfile) -> list[str]:
+        """Resolve matches, then expand ``composes`` dependencies.
+
+        A composable cross-framework skill may declare ``composes: [other]``.
+        We return matched skills plus their transitive dependencies (in
+        dependency-first order), so the planner sees the full knowledge set.
+        """
+        matched = self.skill_names(profile)
+        ordered: list[str] = []
+        seen: set[str] = set()
+
+        def visit(name: str) -> None:
+            if name in seen:
+                return
+            seen.add(name)
+            skill = self.registry.get(name)
+            if skill is None:
+                return
+            for dep in skill.composes:
+                visit(dep)
+            ordered.append(name)
+
+        for name in matched:
+            visit(name)
+        return ordered
+
     def required_capabilities(self, profile: TargetProfile) -> list[str]:
-        names = self.skill_names(profile)
+        names = self.expanded_skill_names(profile)
         return self.registry.required_capabilities(names)

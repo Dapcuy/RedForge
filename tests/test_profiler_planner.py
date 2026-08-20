@@ -1,9 +1,7 @@
 """Tests for the target profiler and the code-security planner."""
-import os
 
-from core.models import Target, TargetKind
 from core.orchestrator.planner import break_repository_into_tasks
-from core.profiling.profiler import Profiler, profile_directory
+from core.profiling.profiler import profile_directory
 
 
 def _write(tmp_path, relpath, content=""):

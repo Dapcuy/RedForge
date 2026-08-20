@@ -2,10 +2,15 @@
 name: wordpress-security
 domain: web
 version: 0.1.0
+schema_version: "2.0"
 requires:
   - vulnerability-scanning
   - content-discovery
   - http-analysis
+validation:
+  - every CVE match confirmed against the detected version
+evidence_requirements:
+  - http response demonstrating the vulnerable endpoint/version
 triggers:
   technology: [wordpress]
   indicators: [wp-content, wp-login.php, xmlrpc.php]

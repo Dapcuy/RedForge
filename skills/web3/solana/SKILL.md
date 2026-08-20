@@ -2,10 +2,16 @@
 name: solana-security
 domain: web3
 version: 0.1.0
+schema_version: "2.0"
 requires:
   - static-analysis
   - fuzzing
   - source-scanning
+validation:
+  - confirmed via unit test or local validator PoC
+evidence_requirements:
+  - code location + reasoning
+  - test/poc showing the flaw
 triggers:
   framework: [solana, anchor]
   technology: [rust]

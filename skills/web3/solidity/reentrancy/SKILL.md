@@ -2,10 +2,17 @@
 name: solidity-reentrancy
 domain: web3
 version: 0.1.0
+schema_version: "2.0"
 requires:
   - static-analysis
   - solidity-analysis
   - fuzzing
+validation:
+  - reentrancy confirmed only by a working PoC (mainnet-fork or local anvil)
+evidence_requirements:
+  - slither detector output
+  - fuzz/invariant trace
+  - poc transaction showing the exploit
 triggers:
   framework: [solidity, foundry]
   technology: [evm]

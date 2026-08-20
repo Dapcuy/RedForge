@@ -2,9 +2,14 @@
 name: api-authentication
 domain: api
 version: 0.1.0
+schema_version: "2.0"
 requires:
   - http-analysis
   - vulnerability-scanning
+validation:
+  - authz flaws confirmed via direct request replay
+evidence_requirements:
+  - http requests showing unauthorized access
 triggers:
   technology: [rest, api]
   indicators: ["/api/", "authorization: bearer"]

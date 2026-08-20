@@ -137,7 +137,8 @@ def _cmd_skills(args: argparse.Namespace) -> int:
     if args.skills_cmd == "list":
         for name in registry.names():
             s = registry.get(name)
-            print(f"{name:24} [{s.domain}] requires={','.join(s.requires)}")
+            if s is not None:
+                print(f"{name:24} [{s.domain}] requires={','.join(s.requires)}")
         return 0
 
     if args.skills_cmd == "resolve":

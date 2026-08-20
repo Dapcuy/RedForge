@@ -7,7 +7,7 @@ correlated, reasoned over, and (ideally) proven with a PoC.
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any
 

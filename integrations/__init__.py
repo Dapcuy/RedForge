@@ -7,4 +7,4 @@ from .base import IntegrationAdapter, IntegrationConfig
 from .caido import CaidoAdapter
 from .strix import StrixAdapter
 
-__all__ = ["IntegrationAdapter", "IntegrationConfig", "CaidoAdapter", "StrixAdapter"]
+__all__ = ["CaidoAdapter", "IntegrationAdapter", "IntegrationConfig", "StrixAdapter"]

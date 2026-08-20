@@ -32,4 +32,6 @@ class IntegrationAdapter(abc.ABC):
         """Run the external tool against a target and return Evidence."""
 
     def _evidence(self, run_id: str, tool: str, target: Target, raw: str) -> Evidence:
-        return make_evidence(run_id=run_id, tool=tool, target=target.value, raw=raw)
+        return make_evidence(
+            scan_id="", tool_run_id=run_id, tool=tool, target=target.value, raw=raw, source=tool,
+        )

@@ -2,11 +2,11 @@
 from core.evidence.models import EvidenceType, make_evidence
 from core.evidence.normalizer import normalize_evidence
 from core.findings.engine import FindingEngine
-from core.findings.models import Confidence, FindingStatus, Severity
+from core.findings.models import FindingStatus, Severity
 
 
 def _ev(tool, target, raw, eid=None):
-    return make_evidence("r1", tool, target, raw, evidence_id=eid)
+    return make_evidence("scn-1", "trun-1", tool, target, raw, evidence_id=eid)
 
 
 def test_evidence_digest_stable():

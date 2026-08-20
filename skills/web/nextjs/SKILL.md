@@ -2,10 +2,18 @@
 name: nextjs-security
 domain: web
 version: 0.1.0
+schema_version: "2.0"
 requires:
   - technology-detection
   - source-scanning
   - http-analysis
+validation:
+  - candidate must have a reproducible request or a concrete code path
+evidence_requirements:
+  - http request/response pair, or
+  - source location (file:line) plus reasoning
+composes:
+  - web-security-baseline
 triggers:
   framework: [nextjs, next.js]
   technology: [react, nodejs]

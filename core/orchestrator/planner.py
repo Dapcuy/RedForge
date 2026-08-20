@@ -10,7 +10,6 @@ import os
 from dataclasses import dataclass, field
 
 from ..models import TargetProfile
-from ..profiling.profiler import _EXT_LANG
 
 
 @dataclass
@@ -20,6 +19,7 @@ class Task:
     description: str
     files: list[str] = field(default_factory=list)
     capabilities: list[str] = field(default_factory=list)
+    target: str = ""   # the target this task is about (URL or path)
 
     def to_dict(self) -> dict:
         return {
@@ -28,6 +28,7 @@ class Task:
             "description": self.description,
             "files": self.files,
             "capabilities": self.capabilities,
+            "target": self.target,
         }
 
 

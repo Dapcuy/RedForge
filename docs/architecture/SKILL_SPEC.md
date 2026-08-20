@@ -1,6 +1,8 @@
-# Skill Specification — v0.1
+# Skill Specification — v0.2
 
-> Status: **Draft (Phase 0)**. Defines the `SKILL.md` format and the Skill Registry/Resolver contracts.
+> Status: **Implemented (schema v2)**. Defines the `SKILL.md` format and the
+> Skill Registry/Resolver contracts. v0.2 adds `schema_version`, `validation`,
+> `evidence_requirements`, and `composes`.
 
 ## 1. Purpose
 
@@ -35,10 +37,16 @@ skills/
 name: wordpress-security
 domain: web
 version: 0.1.0
+schema_version: "2.0"             # semver of the SKILL.md schema itself
 requires:                          # capabilities (abstract), NEVER tool names
   - technology-detection
   - vulnerability-scanning
   - http-analysis
+validation:                        # how a candidate is validated (schema v2)
+  - every CVE match confirmed against the detected version
+evidence_requirements:             # what evidence a finding must carry (schema v2)
+  - http response demonstrating the vulnerable endpoint/version
+composes: []                       # other skills this composes (cross-framework)
 triggers:                          # how the Skill Resolver matches it
   technology: [wordpress]
   indicators: [wp-content, wp-login.php, xmlrpc.php]
@@ -53,8 +61,12 @@ severity_focus: [high, critical]
 |-------|----------|---------|
 | `name` | ✅ | unique skill id |
 | `domain` | ✅ | `web` / `api` / `code` / `cloud` / `network` / `web3` |
-| `version` | ✅ | semver |
+| `version` | ✅ | semver of the skill content |
+| `schema_version` | ✅ (defaults `2.0`) | semver of the SKILL.md schema |
 | `requires` | ✅ | list of **capabilities** |
+| `validation` | recommended (schema v2) | how a candidate finding is validated |
+| `evidence_requirements` | recommended (schema v2) | evidence a finding must carry |
+| `composes` | optional | other skill names this skill composes |
 | `triggers` | recommended | technology / indicators / framework matchers |
 | `severity_focus` | optional | which severities the skill cares about |
 

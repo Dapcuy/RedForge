@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from pathlib import Path
+from typing import ClassVar
 
 from core.findings.models import Finding
 
@@ -78,7 +78,7 @@ load();
 
 
 class DashboardHandler(BaseHTTPRequestHandler):
-    findings: list[Finding] = []
+    findings: ClassVar[list[Finding]] = []
 
     def _send(self, body: bytes, ctype: str, code: int = 200) -> None:
         self.send_response(code)

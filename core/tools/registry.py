@@ -4,7 +4,8 @@ from __future__ import annotations
 import glob
 import os
 from collections import defaultdict
-from typing import Iterable
+from collections.abc import Iterable
+from typing import ClassVar
 
 import yaml
 
@@ -18,7 +19,7 @@ class ToolRegistry:
     (plus its runtime image); no code changes.
     """
 
-    VALID_DOMAINS = {"web", "code", "web3", "network", "cloud", "generic"}
+    VALID_DOMAINS: ClassVar[set[str]] = {"web", "code", "web3", "network", "cloud", "generic"}
 
     def __init__(self) -> None:
         self._tools: dict[str, Tool] = {}

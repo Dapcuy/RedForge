@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: |
+          uv venv .venv
+          uv pip install --python .venv/bin/python pyyaml pytest ruff mypy
+
+      - name: Lint (ruff)
+        run: uv run --python .venv/bin/python ruff check core/ agents/ integrations/ web/ tests/
+
+      - name: Type check (mypy)
+        run: uv run --python .venv/bin/python mypy core/ --ignore-missing-imports
+
+      - name: Unit + integration + E2E tests
+        run: uv run --python .venv/bin/python -m pytest -q
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate compose file
+        run: docker compose config --quiet
+
+      - name: Build base runtime image
+        run: docker compose build base

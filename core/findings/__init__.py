@@ -1,10 +1,10 @@
 """Findings layer: dedup, correlation, judge, and the finding model."""
+from .engine import FindingEngine
 from .models import (
+    Confidence,
     Finding,
     FindingStatus,
     Severity,
-    Confidence,
 )
-from .engine import FindingEngine
 
-__all__ = ["Finding", "FindingStatus", "Severity", "Confidence", "FindingEngine"]
+__all__ = ["Confidence", "Finding", "FindingEngine", "FindingStatus", "Severity"]

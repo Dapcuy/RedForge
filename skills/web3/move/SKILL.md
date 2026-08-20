@@ -2,9 +2,15 @@
 name: move-security
 domain: web3
 version: 0.1.0
+schema_version: "2.0"
 requires:
   - static-analysis
   - source-scanning
+validation:
+  - confirmed via Move unit test
+evidence_requirements:
+  - code location + reasoning
+  - test showing the flaw
 triggers:
   framework: [move, sui]
   indicators: ["Move.toml", "sources/"]

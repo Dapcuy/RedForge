@@ -1,8 +1,7 @@
 """Tests for the Web3/Solidity pipeline (X-Ray -> static -> finding)."""
-import os
 
-from core.web3.pipeline import Web3Pipeline, xray_solidity
 from core.findings.models import Severity
+from core.web3.pipeline import Web3Pipeline, xray_solidity
 
 REENTRANT = """// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;

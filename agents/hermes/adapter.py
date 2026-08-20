@@ -2,6 +2,9 @@
 
 Maps Hermes' tool-calling surface onto RedForge's Agent interface. The adapter
 is a plug-in: it does not import the core, only the public interface contract.
+
+Hermes is one possible brain, not the core. This adapter produces structured
+AgentResult output; it never exposes shell execution.
 """
 from __future__ import annotations
 
@@ -26,4 +29,4 @@ class HermesAgent(Agent):
     def analyze(self, task: dict[str, Any]) -> AgentResult:
         if self.delegate is not None:
             return self.delegate(task)
-        return AgentResult(agent=self.name, candidates=[])
+        return AgentResult(agent=self.name)

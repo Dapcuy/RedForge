@@ -4,7 +4,7 @@ import os
 import pytest
 
 from core.models import Target, TargetKind, TargetProfile
-from core.skills.parser import parse_skill, SkillParseError
+from core.skills.parser import SkillParseError, parse_skill
 from core.skills.registry import SkillRegistry
 from core.skills.resolver import SkillResolver
 
@@ -110,3 +110,50 @@ def test_resolver_required_capabilities(registry):
     # nextjs-security requires technology-detection, source-scanning, http-analysis
     assert "source-scanning" in caps
     assert "http-analysis" in caps
+
+
+def test_parse_schema_version_and_validation():
+    fm = """---
+name: s
+domain: web
+version: 0.1.0
+schema_version: "2.0"
+requires: [http-analysis]
+validation: [confirm via replay]
+evidence_requirements: [http response]
+composes: [web-security-baseline]
+---
+"""
+    skill = parse_skill(fm)
+    assert skill.schema_version == "2.0"
+    assert skill.validation == ["confirm via replay"]
+    assert skill.evidence_requirements == ["http response"]
+    assert skill.composes == ["web-security-baseline"]
+
+
+def test_parse_defaults_schema_version():
+    skill = parse_skill(VALID_FM)
+    assert skill.schema_version == "2.0"
+    assert skill.validation == []
+    assert skill.composes == []
+
+
+def test_parse_unsupported_schema_version():
+    fm = "---\nname: s\ndomain: web\nversion: 1\nschema_version: \"9.9\"\nrequires: [a]\n---\n"
+    with pytest.raises(SkillParseError):
+        parse_skill(fm)
+
+
+def test_resolver_expands_composes(registry):
+    resolver = SkillResolver(registry)
+    profile = TargetProfile(
+        target=Target(TargetKind.REPO, "x"),
+        technologies=["react", "nodejs"],
+        frameworks=["nextjs"],
+    )
+    expanded = resolver.expanded_skill_names(profile)
+    # nextjs-security composes web-security-baseline, which must appear too
+    assert "nextjs-security" in expanded
+    assert "web-security-baseline" in expanded
+    # dependency-first order: baseline before the skill that composes it
+    assert expanded.index("web-security-baseline") < expanded.index("nextjs-security")

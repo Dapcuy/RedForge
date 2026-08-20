@@ -1,12 +1,17 @@
-"""SKILL.md parser.
+"""SKILL.md parser (schema v2).
 
 A Skill is a knowledge unit with YAML frontmatter + a markdown body. The
-frontmatter carries machine-readable fields (name, domain, requires, triggers,
-severity_focus); the body carries human/agent-readable methodology.
+frontmatter carries machine-readable fields; the body carries
+human/agent-readable methodology.
 
-Key rule: ``requires`` must be a list of *capabilities* (abstract verbs), NEVER
-tool names. Violations are caught here (the word 'tool' is only tolerated inside
-the markdown body, not the frontmatter).
+New in schema v2 (P1 hardening):
+  - ``schema_version``: semantic version of the SKILL.md schema itself.
+  - ``validation``: how a candidate finding is validated (required).
+  - ``evidence_requirements``: what evidence a finding must carry (required).
+  - ``composes``: list of other skill names this skill composes (cross-framework).
+
+Key rule (unchanged): ``requires`` must be a list of *capabilities* (abstract
+verbs), NEVER tool names.
 """
 from __future__ import annotations
 
@@ -16,6 +21,7 @@ from dataclasses import dataclass, field
 import yaml
 
 VALID_DOMAINS = {"web", "api", "code", "cloud", "network", "web3"}
+SUPPORTED_SCHEMA_VERSIONS = {"1.0", "2.0"}
 
 _FRONTMATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n?(.*)\Z", re.DOTALL)
 
@@ -30,6 +36,10 @@ class Skill:
     domain: str
     version: str
     requires: list[str]
+    schema_version: str = "2.0"
+    validation: list[str] = field(default_factory=list)
+    evidence_requirements: list[str] = field(default_factory=list)
+    composes: list[str] = field(default_factory=list)
     triggers: dict = field(default_factory=dict)
     severity_focus: list[str] = field(default_factory=list)
     body: str = ""
@@ -62,6 +72,16 @@ def _split_frontmatter(text: str) -> tuple[dict, str]:
     return data, body
 
 
+def _str_list(data: dict, key: str, skill_name: str) -> list[str]:
+    value = data.get(key) or []
+    if not isinstance(value, list):
+        raise SkillParseError(f"skill {skill_name} '{key}' must be a list")
+    for item in value:
+        if not isinstance(item, str):
+            raise SkillParseError(f"skill {skill_name} '{key}' entries must be strings")
+    return list(value)
+
+
 def parse_skill(text: str, path: str = "") -> Skill:
     data, body = _split_frontmatter(text)
 
@@ -73,10 +93,18 @@ def parse_skill(text: str, path: str = "") -> Skill:
     name = str(data["name"])
     domain = str(data["domain"])
     version = str(data["version"])
-    requires = data["requires"]
+
+    schema_version = str(data.get("schema_version", "2.0"))
+    if schema_version not in SUPPORTED_SCHEMA_VERSIONS:
+        raise SkillParseError(
+            f"skill {name} has unsupported schema_version {schema_version!r} "
+            f"(supported: {sorted(SUPPORTED_SCHEMA_VERSIONS)})"
+        )
 
     if domain not in VALID_DOMAINS:
         raise SkillParseError(f"skill {name} has unknown domain: {domain}")
+
+    requires = data["requires"]
     if not isinstance(requires, list) or not requires:
         raise SkillParseError(f"skill {name} 'requires' must be a non-empty list")
     for cap in requires:
@@ -95,7 +123,11 @@ def parse_skill(text: str, path: str = "") -> Skill:
         name=name,
         domain=domain,
         version=version,
+        schema_version=schema_version,
         requires=list(requires),
+        validation=_str_list(data, "validation", name),
+        evidence_requirements=_str_list(data, "evidence_requirements", name),
+        composes=_str_list(data, "composes", name),
         triggers=triggers,
         severity_focus=list(severity),
         body=body,

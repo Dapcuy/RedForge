@@ -6,7 +6,7 @@ pulling in a framework.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any
 
@@ -38,7 +38,7 @@ class RunStatus(str, Enum):
 
 @dataclass
 class RunResult:
-    """The normalized result of a single tool execution."""
+    """The normalized result of a single tool execution (runtime-layer)."""
     run_id: str
     tool: str
     status: RunStatus
@@ -47,6 +47,10 @@ class RunResult:
     stderr: str = ""
     artifacts: list[str] = field(default_factory=list)
     duration_ms: int = 0
+    tool_version: str = ""
+    command: list[str] = field(default_factory=list)
+    started_at: str = ""
+    finished_at: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -74,7 +78,7 @@ class Tool:
     output: dict[str, Any]
 
     @classmethod
-    def from_manifest(cls, data: dict[str, Any]) -> "Tool":
+    def from_manifest(cls, data: dict[str, Any]) -> Tool:
         required = {"name", "domain", "capabilities", "runtime", "inputs", "output"}
         missing = required - set(data)
         if missing:

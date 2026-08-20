@@ -2,9 +2,15 @@
 name: zk-circuit-security
 domain: web3
 version: 0.1.0
+schema_version: "2.0"
 requires:
   - static-analysis
   - constraint-analysis
+validation:
+  - confirmed via constraint trace or test vector
+evidence_requirements:
+  - circuit location + reasoning
+  - failing constraint trace
 triggers:
   framework: [circom, halo2, noir]
   indicators: ["circuits/", ".circom"]
