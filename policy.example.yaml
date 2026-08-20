@@ -1,0 +1,13 @@
+# RedForge policy — example. Copy to policy.yaml and edit for your engagement.
+#
+# All restrictions default to FALSE (deny) — fail-closed by design.
+policy:
+  scope:
+    allowed_targets:
+      - "*.example.local"
+      # - "github.com/Dapcuy/*"
+  restrictions:
+    destructive_actions: false
+    external_targets: false
+    privileged_runtime: false
+    max_parallel_runs: 4
