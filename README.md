@@ -13,7 +13,53 @@ Target (Git repo | URL)
 
 ## Status
 
-**Phase 0 — Architecture & Specification.** No large-scale coding yet; we are defining the contracts that the rest of the build depends on.
+**All 10 milestones implemented** (Phase 0 → Phase 10). The core platform is
+functional with 59 passing tests. Remaining work is hardening, real Docker
+image builds, and live multi-agent wiring.
+
+```
+01. Architecture        ✅  Phase 0
+02. Docker Runtime      ✅  Phase 1 (runtime interface + Dockerfiles; daemon needed to run)
+03. Tool Registry       ✅  Phase 1 (9 tool manifests)
+04. Skill Engine        ✅  Phase 2 (parser + registry + resolver)
+05. Evidence/Finding    ✅  Phase 3 (dedup + correlation + judge)
+06. Code Analysis       ✅  Phase 4 (profiler + planner)
+07. Web Dynamic Test    ✅  Phase 5 (policy + Caido/Strix adapters)
+08. Web3/EVM Security   ✅  Phase 6 (Solidity pipeline)
+09. Multi-Agent         ✅  Phase 8 (interface + dispatcher)
+10. Web Dashboard       ✅  Phase 9 (stdlib dashboard skeleton)
+```
+
+## Quick start
+
+```bash
+# install (python 3.11+)
+uv pip install -e ".[dev]"
+
+# run the test suite
+python -m pytest -q
+
+# inspect the CLI
+python -m core --help
+python -m core tools list
+python -m core skills resolve --framework nextjs --technology react
+python -m core profile --path .
+python -m core web3 --path path/to/solidity
+
+# dashboard
+python -m web.dashboard  # -> http://127.0.0.1:8000
+
+# runtime (requires Docker Desktop running)
+docker compose build
+docker compose up -d
+python -m core run --capability vulnerability-scanning --target https://in-scope.example
+```
+
+## Layering (enforced)
+
+```
+Skill ──requires──▶ Capability ──resolved by──▶ Tool ──runs on──▶ Runtime
+```
 
 | Document | What it defines |
 |----------|-----------------|
