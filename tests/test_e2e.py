@@ -20,10 +20,10 @@ TOOLS_DIR = os.path.join(os.path.dirname(__file__), "..", "tools")
 class _FakeRuntime:
     name = "fake"
 
-    def command_for(self, tool, target, ctx, limits=None):
+    def command_for(self, tool, target, ctx, limits=None, workspace=None, args=None):
         return ["fake", "run", tool.name, target.value]
 
-    def run(self, tool, target, ctx, limits=None):
+    def run(self, tool, target, ctx, limits=None, workspace=None, args=None):
         return RunResult(
             run_id=ctx.run_id, tool=tool.name, status=RunStatus.SUCCESS,
             exit_code=0, stdout='{"cve": "CVE-2024-0001", "severity": "high"}',
@@ -112,7 +112,7 @@ def test_end_to_end_scan(tmp_path):
 
 
 def test_e2e_out_of_scope_blocked(tmp_path):
-    """A target out of policy scope is blocked before any tool runs."""
+    """A target out of policy scope is blocked; scan ends FAILED, no tools run."""
     blob = BlobStore(str(tmp_path / "blobs"))
     db = SqliteStore(str(tmp_path / "redforge.db"), blob_store=blob)
     registry = ToolRegistry()
@@ -124,16 +124,13 @@ def test_e2e_out_of_scope_blocked(tmp_path):
         evidence_repo=db, findings_repo=db, execution=execution,
     )
 
-    import pytest
-
-    from core.policy.engine import PolicyViolation
-
-    with pytest.raises(PolicyViolation):
-        orch.run(
-            target_value="https://evil.com",
-            project_name="e2e",
-            agent=_ScanAgent(),
-        )
-    # nothing was persisted for a blocked scan (fail-closed)
+    result = orch.run(
+        target_value="https://evil.com",
+        project_name="e2e",
+        agent=_ScanAgent(),
+    )
+    # policy violation -> scan FAILED (fail-closed), no tools ran
+    assert result.status.value == "failed"
+    assert "out of scope" in result.error
     assert db.list_tool_runs() == []
     db.close()

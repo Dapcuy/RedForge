@@ -1,13 +1,28 @@
 # RedForge policy — example. Copy to policy.yaml and edit for your engagement.
 #
 # All restrictions default to FALSE (deny) — fail-closed by design.
+# External URLs are DENIED unless allow_external_targets: true.
 policy:
   scope:
     allowed_targets:
       - "*.example.local"
       # - "github.com/Dapcuy/*"
+    allow_local_targets: true       # localhost / RFC1918 / *.local allowed
+    allow_external_targets: false   # external URLs denied by default
   restrictions:
     destructive_actions: false
-    external_targets: false
     privileged_runtime: false
     max_parallel_runs: 4
+    # allowed_capabilities: []      # empty = allow all
+  limits:
+    timeout_s: 300
+    cpu: 1.0
+    memory_mb: 512
+    pids_limit: 256
+    read_only_fs: true
+    network: none                   # none | bridge | host (ordered capability)
+    max_output_bytes: 10000000
+  per_tool:
+    nmap:
+      memory_mb: 1024
+      network: host

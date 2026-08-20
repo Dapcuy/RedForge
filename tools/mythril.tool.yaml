@@ -6,8 +6,11 @@ capabilities:
 runtime:
   image: redforge/web3-runtime
   entrypoint: myth
-  version: 0.24.x
+  version: 0.24.1
 inputs:
   target: source-dir
 output:
   format: json
+trust:
+  verified: false
+  source: Consensys/mythril (official release)

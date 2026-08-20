@@ -1,12 +1,16 @@
-"""Runtime Interface contract + Docker backend (hardened).
+"""Runtime Interface contract + Docker backend (hardened, workspace-aware).
 
 The runtime layer exposes a minimal, stable surface. Agents never reach this
 layer directly — the Tool Execution Service is the only caller.
 
-    run(tool, target, ctx, limits) -> RunResult
+    run(tool, target, ctx, limits, workspace) -> RunResult
     stop(run_id)
     logs(run_id)
     inspect(run_id)
+
+Workspace mounting: only the authorized Workspace (derived from the target,
+never supplied by an agent) is mounted. Host mounts from ToolRequest/Agent are
+impossible by construction — the workspace is the only mount.
 
 The interface stays backend-agnostic (Podman can implement it later without
 touching skills, agents, tools, or orchestration).
@@ -18,6 +22,7 @@ import subprocess
 from collections.abc import Iterator
 
 from ..execution.models import ResourceLimits, utcnow_iso
+from ..execution.workspace import Workspace
 from ..models import RunContext, RunResult, RunStatus, Target, Tool
 
 
@@ -26,7 +31,7 @@ class RunError(Exception):
 
 
 class Runtime(abc.ABC):
-    """Abstract execution backend. ``run`` accepts resource limits."""
+    """Abstract execution backend. ``run`` accepts resource limits + workspace."""
 
     name: str = "abstract"
 
@@ -37,8 +42,15 @@ class Runtime(abc.ABC):
         target: Target,
         ctx: RunContext,
         limits: ResourceLimits | None = None,
+        workspace: Workspace | None = None,
+        args: list[str] | None = None,
     ) -> RunResult:
-        """Execute a tool against a target and return a normalized result."""
+        """Execute a tool against a target and return a normalized result.
+
+        ``args`` (optional) are tool arguments appended after the entrypoint.
+        For source tools, the execution service passes the container-remapped
+        path here instead of the raw host path.
+        """
 
     @abc.abstractmethod
     def stop(self, run_id: str) -> None:
@@ -59,6 +71,8 @@ class Runtime(abc.ABC):
         target: Target,
         ctx: RunContext,
         limits: ResourceLimits | None = None,
+        workspace: Workspace | None = None,
+        args: list[str] | None = None,
     ) -> list[str]:
         """Build the command that ``run`` would execute, without running it.
 
@@ -69,9 +83,13 @@ class Runtime(abc.ABC):
 class DockerRuntime(Runtime):
     """Runs tools inside per-domain Docker images with hard resource limits.
 
-    Uses the ``docker`` CLI (present on Windows/Linux/macOS). Limits are
-    applied via docker flags: --cpus, --memory, --pids-limit, --read-only,
-    --network, and --rm (filesystem is ephemeral).
+    - The authorized source Workspace is mounted read-only at ``/workspace``.
+    - A controlled writable temp dir is mounted at ``/workspace-tmp`` so tools
+      that need build/temp output (foundry, semgrep cache) can write without
+      making the whole container filesystem writable.
+    - No other host mounts are ever added.
+    - Limits: --cpus, --memory, --pids-limit, --network, and (unless the tool
+      needs writable fs) --read-only. ``--rm`` keeps the fs ephemeral.
     """
 
     name = "docker"
@@ -89,7 +107,7 @@ class DockerRuntime(Runtime):
                 f"(docker info: {proc.stderr.strip()[:200]})"
             )
 
-    def _limit_flags(self, limits: ResourceLimits) -> list[str]:
+    def _limit_flags(self, limits: ResourceLimits, workspace: Workspace | None) -> list[str]:
         flags = [
             "--cpus", str(limits.cpu),
             "--memory", f"{limits.memory_mb}m",
@@ -98,6 +116,12 @@ class DockerRuntime(Runtime):
         ]
         if limits.read_only_fs:
             flags += ["--read-only"]
+        if workspace is not None:
+            # Mount the authorized source tree read-only + a writable tmp dir.
+            flags += [
+                "--volume", f"{workspace.root}:{workspace.container_path}:ro",
+                "--volume", f"{workspace.root}:{workspace.writable_tmp}:rw",
+            ]
         return flags
 
     def _truncate(self, text: str, max_bytes: int) -> str:
@@ -106,29 +130,45 @@ class DockerRuntime(Runtime):
             return text
         return data[:max_bytes].decode("utf-8", errors="replace")
 
+    def _command(
+        self,
+        tool: Tool,
+        target: Target,
+        ctx: RunContext,
+        limits: ResourceLimits,
+        workspace: Workspace | None,
+        args: list[str] | None = None,
+    ) -> list[str]:
+        image = tool.image or self._default_image
+        cmd = [self._docker, "run", "--rm", "--name", f"redforge-{ctx.run_id}"]
+        cmd += self._limit_flags(limits, workspace)
+        for key, val in ctx.env.items():
+            cmd += ["-e", f"{key}={val}"]
+        cmd += [image, tool.entrypoint]
+        # Tool arguments: explicit args win over the raw target value.
+        if args:
+            cmd += args
+        else:
+            cmd += [target.value]
+        return cmd
+
     def run(
         self,
         tool: Tool,
         target: Target,
         ctx: RunContext,
         limits: ResourceLimits | None = None,
+        workspace: Workspace | None = None,
+        args: list[str] | None = None,
     ) -> RunResult:
         limits = limits or ResourceLimits()
         self._check_daemon()
-        image = tool.image or self._default_image
         started_at = utcnow_iso()
-        args = [
-            self._docker, "run", "--rm",
-            "--name", f"redforge-{ctx.run_id}",
-        ]
-        args += self._limit_flags(limits)
-        for key, val in ctx.env.items():
-            args += ["-e", f"{key}={val}"]
-        args += [image, tool.entrypoint, target.value]
+        full_cmd = self._command(tool, target, ctx, limits, workspace, args)
 
         self._runs[ctx.run_id] = RunStatus.RUNNING
         try:
-            proc = subprocess.run(args, capture_output=True, text=True, timeout=limits.timeout_s)
+            proc = subprocess.run(full_cmd, capture_output=True, text=True, timeout=limits.timeout_s)
             status = RunStatus.SUCCESS if proc.returncode == 0 else RunStatus.FAILED
             self._runs[ctx.run_id] = status
             return RunResult(
@@ -139,7 +179,7 @@ class DockerRuntime(Runtime):
                 stdout=self._truncate(proc.stdout, limits.max_output_bytes),
                 stderr=self._truncate(proc.stderr, limits.max_output_bytes),
                 tool_version=str(tool.runtime.get("version", "")),
-                command=args,
+                command=full_cmd,
                 started_at=started_at,
                 finished_at=utcnow_iso(),
             )
@@ -160,13 +200,15 @@ class DockerRuntime(Runtime):
     def container_name(self, run_id: str) -> str:
         return f"redforge-{run_id}"
 
-    def command_for(self, tool: Tool, target: Target, ctx: RunContext, limits: ResourceLimits | None = None) -> list[str]:
+    def command_for(
+        self,
+        tool: Tool,
+        target: Target,
+        ctx: RunContext,
+        limits: ResourceLimits | None = None,
+        workspace: Workspace | None = None,
+        args: list[str] | None = None,
+    ) -> list[str]:
         """Build the docker command without executing (used for ToolRun.command)."""
         limits = limits or ResourceLimits()
-        image = tool.image or self._default_image
-        args = [self._docker, "run", "--rm", "--name", f"redforge-{ctx.run_id}"]
-        args += self._limit_flags(limits)
-        for key, val in ctx.env.items():
-            args += ["-e", f"{key}={val}"]
-        args += [image, tool.entrypoint, target.value]
-        return args
+        return self._command(tool, target, ctx, limits, workspace, args)

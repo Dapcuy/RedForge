@@ -44,3 +44,10 @@ jobs:
 
       - name: Build base runtime image
         run: docker compose build base
+
+      - name: Build + smoke-test the tiny E2E runtime
+        run: |
+          docker compose build test
+          # Docker E2E tests run in the test job when a daemon is present;
+          # here we at least prove the test image builds.
+          docker image inspect redforge/test-runtime:latest >/dev/null

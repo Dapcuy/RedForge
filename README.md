@@ -20,16 +20,23 @@ but this is **not yet "fully functional"** — see the distinction below.
 engine, evidence/finding engine, profiler, policy engine, multi-agent interface,
 and SQLite persistence all exist and are unit/integration/E2E tested.
 
-**Not yet fully functional (requires real infra + live wiring):** the Docker
-runtime images have not been built or smoke-tested (daemon needed), agents are
-not yet wired to a live LLM, and the dashboard is a skeleton.
+**Docker execution (2nd hardening pass):** a tiny deterministic test runtime
+image is built and exercised by `tests/test_docker_e2e.py` — it verifies real
+container execution, workspace mounting (read-only `/workspace`), artifact
+creation, evidence creation, and SQLite persistence against a live Docker
+daemon. The **production tool images** (nuclei/semgrep/slither/foundry/...)
+are still not built/smoke-tested with the actual tools.
+
+**Not yet fully functional (requires live wiring):** agents are not yet wired
+to a live LLM, and the dashboard is a skeleton.
 
 ```text
 01. Architecture        ✅  Phase 0
-02. Docker Runtime      🟡  Phase 1 (interface + Dockerfiles written; images not built/tested)
-03. Tool Registry       ✅  Phase 1 (9 tool manifests)
-04. Skill Engine        ✅  Phase 2 (parser + registry + resolver)
-05. Evidence/Finding    ✅  Phase 3 (dedup + correlation + judge)
+02. Docker Runtime      🟡  Phase 1 (interface + workspace mount + E2E test runtime verified;
+                            production tool images not smoke-tested)
+03. Tool Registry       ✅  Phase 1 (10 tool manifests, pinned versions, trust, input schema)
+04. Skill Engine        ✅  Phase 2 (parser + registry + resolver, schema v2)
+05. Evidence/Finding    ✅  Phase 3 (dedup + correlation + judge + REJECTED + lifecycle)
 06. Code Analysis       ✅  Phase 4 (profiler + planner)
 07. Web Dynamic Test    🟡  Phase 5 (policy engine + adapters written; tools not wired live)
 08. Web3/EVM Security   ✅  Phase 6 (Solidity pipeline)
@@ -45,14 +52,25 @@ not yet wired to a live LLM, and the dashboard is a skeleton.
   `ToolRequest`/`ToolRun`/`Artifact` models, and a single execution path
   `Agent → ToolRequest → Policy → Resolver → Executor → Runtime`. Agents never
   touch the runtime directly. ✅
+- **P0 — Workspace:** first-class Workspace abstraction; Docker mounts the
+  authorized source tree read-only at `/workspace` + writable temp; no
+  arbitrary host mounts. ✅
+- **P0 — Policy:** network modeled as ordered capability (none < bridge < host),
+  escalation denied; scope/network/capability/destructive/privileged separated;
+  external URLs denied by default (fail-closed). ✅
+- **P0 — Concurrency:** `max_parallel_runs` enforced atomically via semaphore. ✅
 - **P0 — Evidence/provenance:** evidence references `scan_id`, `tool_run_id`,
-  tool version, timestamps, source, and artifact/hash. ✅
-- **P0 — Runtime safety:** DockerRuntime applies CPU/memory/PID/filesystem/
-  network/timeout limits; the Policy engine enforces them. ✅
-- **P1 — Persistence:** repository Protocols + SQLite backend + on-disk blob
-  store for large artifacts (DB holds references only). ✅
-- **P1 — Agent:** structured `AgentObservation`/`AgentDecision`/
-  `AgentToolRequest`/`AgentFindingCandidate`. ✅
+  tool version, timestamps, source, artifact/hash. Evidence → Finding lifecycle
+  with candidate/REJECTED and structured locations. ✅
+- **P0 — Scan lifecycle:** queued/running/completed/failed/partial/cancelled/
+  timeout with try/except/finally state updates. ✅
+- **P1 — Runtime:** Docker E2E test (tiny deterministic runtime) verifies real
+  container execution + workspace mount + artifact/evidence + SQLite. ✅
+- **P1 — Reproducibility:** tool versions pinned; trust metadata per manifest. ✅
+- **P1 — Persistence:** repository Protocols + SQLite + blob store; full
+  ExecutionContext restore; unit-of-work transactions. ✅
+- **P1 — Registry:** deterministic priority selection + input-schema validation
+  + image trust. ✅
 - **P2 — Hygiene:** CI (test/lint/type/docker), `docs/THIRD_PARTY.md`. ✅
 
 ## Quick start

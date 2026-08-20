@@ -14,10 +14,38 @@ import hashlib
 import json
 import os
 import sqlite3
+from typing import Literal
 
 from ..evidence.models import Evidence, EvidenceType
 from ..execution.models import Artifact, ToolRun
 from ..findings.models import Confidence, Finding, FindingStatus, Severity
+
+
+class _Transaction:
+    """A unit-of-work context manager over a SQLite connection.
+
+    Repository methods commit after each write by default (simple, safe). When
+    a transaction is active, the store sets ``_in_transaction`` so those
+    per-write commits become no-ops; the transaction issues a single
+    COMMIT/ROLLBACK on exit. Nested transactions are not supported.
+    """
+
+    def __init__(self, store: SqliteStore) -> None:
+        self._store = store
+
+    def __enter__(self) -> SqliteStore:
+        self._store._in_transaction = True
+        self._store._conn.execute("BEGIN")
+        return self._store
+
+    def __exit__(self, exc_type, exc, tb) -> Literal[False]:
+        if exc_type is None:
+            self._store._conn.execute("COMMIT")
+        else:
+            self._store._conn.execute("ROLLBACK")
+        self._store._in_transaction = False
+        return False  # propagate the exception
+
 
 
 class BlobStore:
@@ -54,10 +82,16 @@ class SqliteStore:
     def __init__(self, db_path: str, blob_store: BlobStore | None = None) -> None:
         self.db_path = db_path
         self.blob_store = blob_store
+        self._in_transaction = False
         os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
         self._conn = sqlite3.connect(db_path)
         self._conn.row_factory = sqlite3.Row
         self._init_schema()
+
+    def _commit(self) -> None:
+        """Commit unless a transaction is active (the transaction owns the commit)."""
+        if not self._in_transaction:
+            self._conn.commit()
 
     def _init_schema(self) -> None:
         cur = self._conn.cursor()
@@ -80,9 +114,9 @@ class SqliteStore:
             );
             CREATE TABLE IF NOT EXISTS tool_runs (
                 id TEXT PRIMARY KEY, tool_name TEXT, tool_version TEXT, capability TEXT,
-                target TEXT, scan_id TEXT, task_id TEXT, agent_run_id TEXT,
-                runtime TEXT, status TEXT, exit_code INTEGER, command TEXT,
-                stdout TEXT, stderr TEXT, timeout_s INTEGER,
+                target TEXT, project_id TEXT, target_id TEXT, scan_id TEXT, task_id TEXT,
+                agent_run_id TEXT, runtime TEXT, status TEXT, exit_code INTEGER,
+                command TEXT, stdout TEXT, stderr TEXT, timeout_s INTEGER,
                 started_at TEXT, finished_at TEXT, limits TEXT
             );
             CREATE TABLE IF NOT EXISTS artifacts (
@@ -103,10 +137,24 @@ class SqliteStore:
             );
             """
         )
-        self._conn.commit()
+        self._commit()
 
     def close(self) -> None:
         self._conn.close()
+
+    # ---- Unit-of-work / transactions ----
+    def transaction(self):
+        """Context manager for atomic multi-record operations.
+
+        Usage:
+            with store.transaction():
+                store.add_tool_run(run)
+                store.add_evidence(ev)
+
+        On exception, all writes inside the block are rolled back, so partial
+        failures do not leave misleading state.
+        """
+        return _Transaction(self)
 
     # ---- Projects ----
     def add_project(self, project_id: str, name: str, metadata: dict | None = None) -> None:
@@ -114,7 +162,7 @@ class SqliteStore:
             "INSERT OR REPLACE INTO projects (id, name, metadata) VALUES (?,?,?)",
             (project_id, name, json.dumps(metadata or {})),
         )
-        self._conn.commit()
+        self._commit()
 
     def get_project(self, project_id: str) -> dict | None:
         row = self._conn.execute("SELECT * FROM projects WHERE id=?", (project_id,)).fetchone()
@@ -129,7 +177,7 @@ class SqliteStore:
             "INSERT OR REPLACE INTO targets (id, project_id, kind, value) VALUES (?,?,?,?)",
             (target_id, project_id, kind, value),
         )
-        self._conn.commit()
+        self._commit()
 
     def get_target(self, target_id: str) -> dict | None:
         row = self._conn.execute("SELECT * FROM targets WHERE id=?", (target_id,)).fetchone()
@@ -144,7 +192,7 @@ class SqliteStore:
             "INSERT OR REPLACE INTO scans (id, project_id, target_id, status) VALUES (?,?,?,?)",
             (scan_id, project_id, target_id, status),
         )
-        self._conn.commit()
+        self._commit()
 
     def get_scan(self, scan_id: str) -> dict | None:
         row = self._conn.execute("SELECT * FROM scans WHERE id=?", (scan_id,)).fetchone()
@@ -159,7 +207,7 @@ class SqliteStore:
             "INSERT OR REPLACE INTO tasks (id, scan_id, area, description) VALUES (?,?,?,?)",
             (task_id, scan_id, area, description),
         )
-        self._conn.commit()
+        self._commit()
 
     def get_task(self, task_id: str) -> dict | None:
         row = self._conn.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
@@ -174,7 +222,7 @@ class SqliteStore:
             "INSERT OR REPLACE INTO agent_runs (id, task_id, agent) VALUES (?,?,?)",
             (agent_run_id, task_id, agent),
         )
-        self._conn.commit()
+        self._commit()
 
     def get_agent_run(self, agent_run_id: str) -> dict | None:
         row = self._conn.execute("SELECT * FROM agent_runs WHERE id=?", (agent_run_id,)).fetchone()
@@ -196,19 +244,20 @@ class SqliteStore:
 
         self._conn.execute(
             """INSERT OR REPLACE INTO tool_runs
-               (id, tool_name, tool_version, capability, target, scan_id, task_id,
-                agent_run_id, runtime, status, exit_code, command, stdout, stderr,
-                timeout_s, started_at, finished_at, limits)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               (id, tool_name, tool_version, capability, target, project_id, target_id,
+                scan_id, task_id, agent_run_id, runtime, status, exit_code, command,
+                stdout, stderr, timeout_s, started_at, finished_at, limits)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 run.id, run.tool_name, run.tool_version, run.capability, run.target,
+                run.context.project_id, run.context.target_id,
                 run.context.scan_id, run.context.task_id, run.context.agent_run_id,
                 run.runtime, run.status.value, run.exit_code, json.dumps(run.command),
                 stdout, stderr, run.timeout_s, run.started_at, run.finished_at,
                 json.dumps(run.limits.to_dict()),
             ),
         )
-        self._conn.commit()
+        self._commit()
 
     def get_tool_run(self, tool_run_id: str) -> ToolRun | None:
         row = self._conn.execute("SELECT * FROM tool_runs WHERE id=?", (tool_run_id,)).fetchone()
@@ -227,8 +276,11 @@ class SqliteStore:
             id=row["id"], tool_name=row["tool_name"], tool_version=row["tool_version"],
             capability=row["capability"], target=row["target"],
             context=ExecutionContext(
-                project_id="", target_id="", scan_id=row["scan_id"] or "",
-                task_id=row["task_id"] or "", agent_run_id=row["agent_run_id"] or "",
+                project_id=row["project_id"] or "",
+                target_id=row["target_id"] or "",
+                scan_id=row["scan_id"] or "",
+                task_id=row["task_id"] or "",
+                agent_run_id=row["agent_run_id"] or "",
             ),
             command=json.loads(row["command"] or "[]"), runtime=row["runtime"],
             status=RunStatus(row["status"]), exit_code=row["exit_code"],
@@ -253,7 +305,7 @@ class SqliteStore:
             (artifact.id, artifact.tool_run_id, artifact.kind, artifact.format,
              content, path, sha256, artifact.size_bytes, artifact.created_at),
         )
-        self._conn.commit()
+        self._commit()
 
     def get_artifact(self, artifact_id: str) -> Artifact | None:
         row = self._conn.execute("SELECT * FROM artifacts WHERE id=?", (artifact_id,)).fetchone()
@@ -295,7 +347,7 @@ class SqliteStore:
              json.dumps(evidence.normalized) if evidence.normalized else None,
              evidence.created_at),
         )
-        self._conn.commit()
+        self._commit()
 
     def get_evidence(self, evidence_id: str) -> Evidence | None:
         row = self._conn.execute("SELECT * FROM evidence WHERE id=?", (evidence_id,)).fetchone()
@@ -334,7 +386,7 @@ class SqliteStore:
              finding.attack_path, json.dumps(finding.evidence), finding.reproduction,
              finding.remediation, json.dumps(finding.references)),
         )
-        self._conn.commit()
+        self._commit()
 
     def get_finding(self, finding_id: str) -> Finding | None:
         row = self._conn.execute("SELECT * FROM findings WHERE id=?", (finding_id,)).fetchone()

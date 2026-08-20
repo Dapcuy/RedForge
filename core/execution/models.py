@@ -12,9 +12,12 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..models import RunStatus, Target
+
+if TYPE_CHECKING:  # pragma: no cover
+    from .workspace import Workspace
 
 
 def utcnow_iso() -> str:
@@ -81,7 +84,10 @@ class ToolRequest:
         tool_name:  optional preferred tool name (empty = resolver default).
         target:     what to run against.
         context:    correlation context (project/target/scan/...).
-        arguments:  tool-specific arguments.
+        workspace:  optional authorized Workspace for source targets. NEVER
+                    supplied by the agent; derived from the target by the
+                    orchestrator and validated by the execution service.
+        arguments:  tool-specific arguments (validated against input schema).
         source:     which agent requested this (provenance).
         limits:     optional per-request limits; if unset, policy defaults apply.
     """
@@ -90,6 +96,7 @@ class ToolRequest:
     target: Target
     context: ExecutionContext
     tool_name: str = ""
+    workspace: Workspace | None = None
     arguments: dict[str, Any] = field(default_factory=dict)
     source: str = ""
     limits: ResourceLimits | None = None
@@ -97,6 +104,7 @@ class ToolRequest:
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["context"] = self.context.to_dict()
+        d["workspace"] = self.workspace.to_dict() if self.workspace else None
         d["limits"] = self.limits.to_dict() if self.limits else None
         return d
 

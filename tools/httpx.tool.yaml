@@ -6,8 +6,11 @@ capabilities:
 runtime:
   image: redforge/web-runtime
   entrypoint: httpx
-  version: 1.6.x
+  version: 1.6.9
 inputs:
   target: url
 output:
   format: json
+trust:
+  verified: false
+  source: projectdiscovery/httpx (official release)

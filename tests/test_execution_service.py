@@ -24,10 +24,10 @@ class _RecordingRuntime:
         self._result = result
         self._raise_error = raise_error
 
-    def command_for(self, tool, target, ctx, limits=None):
+    def command_for(self, tool, target, ctx, limits=None, workspace=None, args=None):
         return ["fake", "run", tool.name, target.value]
 
-    def run(self, tool, target, ctx, limits=None):
+    def run(self, tool, target, ctx, limits=None, workspace=None, args=None):
         self.calls.append((tool.name, target.value, limits))
         if self._raise_error:
             raise self._raise_error
@@ -66,9 +66,15 @@ def _request(capability="vulnerability-scanning", tool_name="", target_value="ht
     )
 
 
+def _policy(**kwargs):
+    # These tests exercise the execution chain, so allow the target by default.
+    kwargs.setdefault("external_targets", True)
+    return Policy(**kwargs)
+
+
 def test_execution_service_resolves_capability():
     rt = _RecordingRuntime()
-    svc = ToolExecutionService(_registry(), rt, PolicyEngine(Policy()))
+    svc = ToolExecutionService(_registry(), rt, PolicyEngine(_policy()))
     outcome = svc.execute(_request(capability="vulnerability-scanning"))
     assert outcome.tool_run.tool_name == "nuclei"
     # artifacts produced for stdout
@@ -77,14 +83,14 @@ def test_execution_service_resolves_capability():
 
 def test_execution_service_prefers_named_tool():
     rt = _RecordingRuntime()
-    svc = ToolExecutionService(_registry(), rt, PolicyEngine(Policy()))
+    svc = ToolExecutionService(_registry(), rt, PolicyEngine(_policy()))
     outcome = svc.execute(_request(capability="static-analysis", tool_name="slither"))
     assert outcome.tool_run.tool_name == "slither"
 
 
 def test_execution_service_applies_policy_limits():
     rt = _RecordingRuntime()
-    policy = Policy()
+    policy = _policy()
     policy.limits.memory_mb = 256
     svc = ToolExecutionService(_registry(), rt, PolicyEngine(policy))
     svc.execute(_request())
@@ -111,14 +117,14 @@ def test_execution_service_blocks_privileged():
 
 def test_execution_service_unknown_tool_raises():
     rt = _RecordingRuntime()
-    svc = ToolExecutionService(_registry(), rt, PolicyEngine(Policy()))
+    svc = ToolExecutionService(_registry(), rt, PolicyEngine(_policy()))
     with pytest.raises(KeyError):
         svc.execute(_request(tool_name="does-not-exist"))
 
 
 def test_execution_service_propagates_runtime_error():
     rt = _RecordingRuntime(raise_error=RunError("boom"))
-    svc = ToolExecutionService(_registry(), rt, PolicyEngine(Policy()))
+    svc = ToolExecutionService(_registry(), rt, PolicyEngine(_policy()))
     with pytest.raises(RunError):
         svc.execute(_request())
 
@@ -126,7 +132,7 @@ def test_execution_service_propagates_runtime_error():
 def test_request_limit_cannot_escalate_beyond_policy():
     """A request asking for more memory than policy allows is clamped down."""
     rt = _RecordingRuntime()
-    policy = Policy()
+    policy = _policy()
     policy.limits.memory_mb = 128
     policy.limits.timeout_s = 60
     svc = ToolExecutionService(_registry(), rt, PolicyEngine(policy))

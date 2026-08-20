@@ -69,13 +69,22 @@ class RunContext:
 
 @dataclass
 class Tool:
-    """A concrete security tool, parsed from a declarative manifest."""
+    """A concrete security tool, parsed from a declarative manifest.
+
+    ``priority`` (higher wins) makes tool selection deterministic instead of
+    "first registered". ``trust`` records image provenance/verification state
+    (security-sensitive configuration). ``input_schema`` optionally describes
+    accepted ToolRequest arguments.
+    """
     name: str
     domain: str
     capabilities: list[str]
     runtime: dict[str, Any]
     inputs: dict[str, Any]
     output: dict[str, Any]
+    priority: int = 0
+    trust: dict[str, Any] = field(default_factory=dict)
+    input_schema: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_manifest(cls, data: dict[str, Any]) -> Tool:
@@ -90,6 +99,9 @@ class Tool:
             runtime=dict(data["runtime"]),
             inputs=dict(data["inputs"]),
             output=dict(data["output"]),
+            priority=int(data.get("priority", 0)),
+            trust=dict(data.get("trust", {}) or {}),
+            input_schema=dict(data.get("input_schema", {}) or {}),
         )
 
     @property
@@ -99,6 +111,10 @@ class Tool:
     @property
     def entrypoint(self) -> str:
         return self.runtime.get("entrypoint", self.name)
+
+    @property
+    def verified(self) -> bool:
+        return bool(self.trust.get("verified", False))
 
 
 @dataclass

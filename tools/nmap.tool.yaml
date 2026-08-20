@@ -11,3 +11,6 @@ inputs:
   target: host
 output:
   format: xml
+trust:
+  verified: false
+  source: nmap.org (official release)

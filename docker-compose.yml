@@ -38,6 +38,13 @@ services:
     depends_on:
       - base
 
+  # Tiny deterministic runtime used only by the Docker E2E test.
+  test:
+    build:
+      context: ./runtimes/test
+      dockerfile: Dockerfile
+    image: redforge/test-runtime:latest
+
   # privileged: intentionally commented out. Enable only when policy
   # allow_privileged_runtime=true.
   # privileged:

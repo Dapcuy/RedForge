@@ -6,8 +6,11 @@ capabilities:
 runtime:
   image: redforge/web3-runtime
   entrypoint: slither
-  version: 0.10.x
+  version: 0.10.4
 inputs:
   target: source-dir
 output:
   format: json
+trust:
+  verified: false
+  source: crytic/slither (official release)

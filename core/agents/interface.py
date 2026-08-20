@@ -53,7 +53,12 @@ class AgentToolRequest:
 
 @dataclass
 class AgentFindingCandidate:
-    """A candidate finding the agent wants the Finding engine to consider."""
+    """A candidate finding the agent wants the Finding engine to consider.
+
+    This is a HYPOTHESIS, not a final Finding. The Finding engine ingests it
+    as status=CANDIDATE; it must be validated/confirmed (or rejected) before
+    it becomes an actionable finding.
+    """
     title: str
     severity: str = "medium"
     confidence: str = "low"
@@ -61,6 +66,7 @@ class AgentFindingCandidate:
     root_cause: str = ""
     attack_path: str = ""
     evidence_refs: list[str] = field(default_factory=list)
+    locations: list[dict[str, str]] = field(default_factory=list)
 
 
 @dataclass

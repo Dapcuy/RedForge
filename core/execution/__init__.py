@@ -16,6 +16,7 @@ from .models import (
     ToolRun,
     utcnow_iso,
 )
+from .workspace import Workspace, WorkspaceError, make_workspace, validate_workspace_path
 
 if TYPE_CHECKING:  # pragma: no cover
     from .service import ToolExecutionService
@@ -27,7 +28,11 @@ __all__ = [
     "ToolExecutionService",
     "ToolRequest",
     "ToolRun",
+    "Workspace",
+    "WorkspaceError",
+    "make_workspace",
     "utcnow_iso",
+    "validate_workspace_path",
 ]
 
 

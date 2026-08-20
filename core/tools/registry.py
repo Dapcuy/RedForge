@@ -50,10 +50,11 @@ class ToolRegistry:
         return self._tools.get(name)
 
     def resolve_capability(self, capability: str, preferred: str | None = None) -> Tool:
-        """Resolve a capability to a single tool.
+        """Resolve a capability to a single tool (deterministic).
 
-        Prefers ``preferred`` if it is registered and satisfies the capability,
-        else the first registered tool.
+        Order:
+        1. ``preferred`` tool, if registered and satisfies the capability.
+        2. Highest ``priority`` (tie broken by name for determinism).
         """
         tools = self._by_capability.get(capability, [])
         if not tools:
@@ -62,7 +63,33 @@ class ToolRegistry:
             for tool in tools:
                 if tool.name == preferred:
                     return tool
-        return tools[0]
+        # Deterministic: highest priority, ties broken by name (ascending).
+        return min(tools, key=lambda t: (-t.priority, t.name))
+
+    def validate_arguments(self, tool: Tool, arguments: dict) -> None:
+        """Validate ToolRequest arguments against the tool's input schema.
+
+        The schema (``input_schema``) lists accepted keys; each may declare
+        ``required`` (bool) and ``type``. Unknown keys are rejected — an agent
+        cannot smuggle arbitrary arguments (e.g. mount flags) to a tool.
+        """
+        schema = tool.input_schema
+        if not schema:
+            return  # no schema -> no extra validation
+        known = set(schema)
+        provided = set(arguments)
+        unknown = provided - known
+        if unknown:
+            raise ValueError(
+                f"tool {tool.name} got unknown arguments: {sorted(unknown)} "
+                f"(allowed: {sorted(known)})"
+            )
+        for key, spec in schema.items():
+            spec = spec if isinstance(spec, dict) else {"type": str(spec)}
+            if spec.get("required") and key not in provided:
+                raise ValueError(f"tool {tool.name} requires argument '{key}'")
+            if key in provided and spec.get("type") == "string" and not isinstance(arguments[key], str):
+                raise ValueError(f"tool {tool.name} argument '{key}' must be a string")
 
     def resolve_many(self, capabilities: Iterable[str], preferred: str | None = None) -> list[Tool]:
         """Resolve a set of capabilities, deduping by tool name."""

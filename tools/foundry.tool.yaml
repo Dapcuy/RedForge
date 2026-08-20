@@ -7,8 +7,11 @@ capabilities:
 runtime:
   image: redforge/web3-runtime
   entrypoint: forge
-  version: latest
+  version: 1.0.0
 inputs:
   target: source-dir
 output:
   format: text
+trust:
+  verified: false
+  source: foundry-rs/foundry (official release)

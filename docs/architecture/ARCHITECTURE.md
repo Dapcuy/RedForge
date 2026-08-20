@@ -1,7 +1,8 @@
-# RedForge Architecture — v0.2
+# RedForge Architecture — v0.3
 
-> Status: **Implemented (hardened)**. This documents the current architecture,
-> which reflects the P0/P1 hardening work on top of the Phase 0 design.
+> Status: **Implemented + hardened (2nd pass)**. Reflects Workspace mounting,
+> ordered network policy, atomic concurrency, evidence→finding lifecycle, scan
+> lifecycle states, and Docker E2E testing.
 
 ## Repository layout
 
@@ -77,10 +78,40 @@ Agent → ToolRequest → Policy → Tool Resolver → Tool Executor → Runtime
 ```
 
 - `ToolRequest` is an intent (capability + optional preferred tool), not a command.
-- `Policy` produces effective `ResourceLimits` (most-restrictive-wins) and
-  rejects out-of-scope / destructive / privileged requests fail-closed.
-- `Tool Execution Service` (`core/execution/service.py`) owns the whole chain
+- **Workspace**: only the authorized Workspace (validated by the execution
+  service, derived from the target) is mounted — read-only at `/workspace`,
+  writable temp at `/workspace-tmp`. Agents/requests cannot add host mounts.
+- **Policy** (fail-closed) enforces, separately: target scope, network
+  permission (none < bridge < host, deny escalation), capability permission,
+  destructive permission, privileged permission. Effective resource limits are
+  most-restrictive-wins.
+- **Concurrency**: `max_parallel_runs` is enforced atomically via a semaphore,
+  not a racy active-count check.
+- **Tool Execution Service** (`core/execution/service.py`) owns the whole chain
   and emits provenance-aware `ToolRun` + `Artifact` records.
+
+## Evidence → Finding lifecycle
+
+```
+ToolRun → Artifact → Evidence → Correlation → Validation/Judge → Finding
+```
+
+- Evidence produced by a tool run is correlated into the FindingEngine BEFORE
+  findings are persisted.
+- Agent finding candidates are ingested as status=CANDIDATE (hypotheses); they
+  are NEVER auto-confirmed. Lifecycle: candidate → analyzed → validated →
+  confirmed, or rejected (false positive).
+- Correlation matches evidence via exact target/component equality or
+  structured `EvidenceLocation` (file, line, function, contract, URL, ...),
+  not naive substring matching.
+
+## Scan lifecycle
+
+Formal states: `queued → running → completed | failed | partial | cancelled |
+timeout`. Exceptions from policy, runtime, agent, tool, or persistence update
+the scan state correctly via try/except/finally. Per-tool-record writes are
+atomic via unit-of-work (`transaction()`), so partial failures do not leave
+misleading scan state.
 
 ## Correlation IDs
 

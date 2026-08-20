@@ -26,10 +26,10 @@ class _FakeRuntime:
         self.calls = []
         self._fail_tool = fail_tool
 
-    def command_for(self, tool, target, ctx, limits=None):
+    def command_for(self, tool, target, ctx, limits=None, workspace=None, args=None):
         return ["fake", tool.name, target.value]
 
-    def run(self, tool, target, ctx, limits=None):
+    def run(self, tool, target, ctx, limits=None, workspace=None, args=None):
         self.calls.append((tool.name, limits))
         if self._fail_tool and tool.name == self._fail_tool:
             raise RunError(f"{tool.name} failed")
@@ -51,6 +51,9 @@ class _FakeRuntime:
 def _svc(runtime, **policy_kwargs):
     reg = ToolRegistry()
     reg.load_dir(TOOLS_DIR)
+    # default to allowing the external test target; tests that check scope
+    # explicitly pass external_targets=False.
+    policy_kwargs.setdefault("external_targets", True)
     policy = Policy(**policy_kwargs)
     return ToolExecutionService(reg, runtime, PolicyEngine(policy))
 

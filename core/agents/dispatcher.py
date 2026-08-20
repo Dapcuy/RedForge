@@ -80,12 +80,25 @@ class Dispatcher:
         return self._areas.get(area, self.default_agent())
 
     def _ingest_finding_candidate(self, cand: AgentFindingCandidate) -> None:
+        from ..findings.models import EvidenceLocation, EvidenceLocationKind
+
+        locations = []
+        for loc in cand.locations:
+            try:
+                locations.append(EvidenceLocation(
+                    kind=EvidenceLocationKind(loc.get("kind", "file")),
+                    value=loc.get("value", ""),
+                ))
+            except ValueError:
+                continue
         self.engine.add_candidate(
             title=cand.title,
             severity=_to_severity(cand.severity),
             affected_component=cand.affected_component,
             root_cause=cand.root_cause,
             confidence=_to_confidence(cand.confidence),
+            evidence_ids=cand.evidence_refs,
+            locations=locations,
         )
 
     def _ingest_legacy_candidates(self, result: AgentResult) -> None:

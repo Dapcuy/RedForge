@@ -6,8 +6,11 @@ capabilities:
 runtime:
   image: redforge/web-runtime
   entrypoint: ffuf
-  version: 2.1.x
+  version: 2.1.0
 inputs:
   target: url
 output:
   format: json
+trust:
+  verified: false
+  source: ffuf/ffuf (official release)
