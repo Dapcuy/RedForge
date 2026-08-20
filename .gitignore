@@ -28,6 +28,7 @@ web/dashboard/out/
 runs/
 evidence_store/
 artifacts/
+.redforge-tmp/
 
 # OS / editor
 .DS_Store

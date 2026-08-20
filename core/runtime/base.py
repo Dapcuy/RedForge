@@ -18,6 +18,7 @@ touching skills, agents, tools, or orchestration).
 from __future__ import annotations
 
 import abc
+import os
 import subprocess
 from collections.abc import Iterator
 
@@ -117,10 +118,14 @@ class DockerRuntime(Runtime):
         if limits.read_only_fs:
             flags += ["--read-only"]
         if workspace is not None:
-            # Mount the authorized source tree read-only + a writable tmp dir.
+            # Mount the authorized source tree read-only + a controlled writable
+            # temp dir (a subdir of the workspace so it stays under the same
+            # authorization boundary, but is separate from the source tree).
+            tmp_host = os.path.join(workspace.root, ".redforge-tmp")
+            os.makedirs(tmp_host, exist_ok=True)
             flags += [
                 "--volume", f"{workspace.root}:{workspace.container_path}:ro",
-                "--volume", f"{workspace.root}:{workspace.writable_tmp}:rw",
+                "--volume", f"{tmp_host}:{workspace.writable_tmp}:rw",
             ]
         return flags
 
