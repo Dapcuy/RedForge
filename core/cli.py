@@ -86,10 +86,14 @@ def _build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--db", default=None, help="SQLite path for persistence (default: in-memory)")
     scan.add_argument("--no-agent", action="store_true",
                       help="skip the reference agent loop (profile + skill resolution only)")
-    scan.add_argument("--agent", default=None, choices=["recon", "code", "hermes"],
+    scan.add_argument("--agent", default=None, choices=["recon", "code", "hermes", "hermes-live"],
                       help="agent to run (default: recon for url, code for source-dir)")
     scan.add_argument("--emit", default=None,
                       help="Hermes EmitRequest JSON (inline or file path)")
+    scan.add_argument("--llm-backend", default="anthropic", choices=["anthropic", "openai", "ollama"],
+                      help="LLM backend for the hermes-live agent")
+    scan.add_argument("--llm-model", default=None,
+                      help="model name for the hermes-live agent (backend default if omitted)")
 
     return parser
 
@@ -348,6 +352,26 @@ def _cmd_scan(args: argparse.Namespace) -> int:
                 else:
                     emit = emit_arg
             agent = HermesAgent(emit_payload=emit)
+        elif agent_name == "hermes-live":
+            from agents.hermes.live import HermesLiveAgent
+            from agents.hermes.llm_backends import AnthropicLLM, OllamaLLM, OpenAILLM
+            from core.agents.llm import LLMClient
+
+            backend = getattr(args, "llm_backend", "anthropic")
+            model = getattr(args, "llm_model", None)
+            llm: LLMClient
+            if backend == "anthropic":
+                llm = AnthropicLLM(model=model or "claude-sonnet-4-5")
+            elif backend == "openai":
+                llm = OpenAILLM(model=model or "gpt-5.2")
+            else:
+                llm = OllamaLLM(model=model or "llama3.1")
+            # The live agent may only request capabilities that a registered
+            # tool actually provides (the execution service re-checks anyway).
+            capabilities = sorted({
+                cap for tool in registry.tools.values() for cap in tool.capabilities
+            })
+            agent = HermesLiveAgent(llm=llm, capabilities=capabilities)
         else:
             from agents.generic import agents as _agents
             agent = _agents.ReconAgent() if is_url else _agents.CodeAgent()
