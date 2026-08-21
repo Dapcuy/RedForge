@@ -195,6 +195,32 @@ class ToolExecutionService:
             ))
         return artifacts
 
+    def _stage_file_inputs(self, request: ToolRequest, run_tmp: str) -> ToolRequest:
+        """Copy tool file inputs (template/wordlist) into the per-run tmp dir.
+
+        URL tools (nuclei templates, ffuf wordlists) reference local files.
+        We copy those into the RedForge-managed per-run tmp dir (mounted at
+        /workspace-tmp) so the container can read them. The argument path is
+        remapped to the container path. Only whitelisted file args are staged;
+        everything else is passed as a flag untouched.
+        """
+        args = dict(request.arguments)
+        for key in ("template", "wordlist"):
+            if not args.get(key):
+                continue
+            host_path = str(args[key])
+            # Skip already-container paths.
+            if host_path.startswith(("/workspace", "/tmp")):
+                continue
+            if not os.path.isfile(host_path):
+                raise ValueError(f"tool input file not found: {host_path!r}")
+            fname = os.path.basename(host_path)
+            dest = os.path.join(run_tmp, fname)
+            shutil.copyfile(host_path, dest)
+            args[key] = f"/workspace-tmp/{fname}"
+        request.arguments = args
+        return request
+
     def execute(self, request: ToolRequest) -> ExecutionOutcome:
         """Execute a ToolRequest end-to-end under the concurrency semaphore.
 
@@ -222,33 +248,53 @@ class ToolExecutionService:
 
             # 4. Build the runtime Workspace: RedForge-managed per-run tmp dir
             #    OUTSIDE the source tree; the source tree stays read-only.
-            workspace: Workspace | None = None
+            #    URL tools also get a per-run tmp dir for file inputs
+            #    (nuclei templates, ffuf wordlists), copied in below.
+            run_tmp = self._make_per_run_tmp(aws.id if aws else "url", run_id)
+            workspace: Workspace | None
             if aws is not None:
-                run_tmp = self._make_per_run_tmp(aws.id, run_id)
                 workspace = Workspace(
                     root=aws.root,
                     container_path=aws.container_path,
                     writable_tmp=aws.writable_tmp,
                     tmp_root=run_tmp,   # host path of the managed per-run tmp dir
                 )
+            else:
+                # URL tool: no source tree; only the writable tmp dir is mounted.
+                workspace = Workspace(
+                    root="",
+                    container_path="/workspace",
+                    writable_tmp="/workspace-tmp",
+                    tmp_root=run_tmp,
+                )
             request = self._remap_workspace_paths(request, workspace)
+            request = self._stage_file_inputs(request, run_tmp)
 
             # Tool arguments (container-remapped paths + flags).
             tool_args: list[str] | None = None
-            if workspace is not None and request.arguments.get("path"):
+            if aws is not None and request.arguments.get("path"):
+                # Source tool: remapped path is the first argument.
                 tool_args = [request.arguments["path"]]
+            elif aws is None:
+                # URL tool: positional URL, unless `u` overrides it.
+                if "u" in request.arguments:
+                    tool_args = []
+                else:
+                    tool_args = [request.target.value]
+            if tool_args is not None:
+                flag_map = tool.runtime.get("flag_map", {}) or {}
                 for key, val in request.arguments.items():
                     if key in {"path", "env"}:
                         continue
+                    flag = flag_map.get(key, f"--{key}")
                     if isinstance(val, list):
-                        tool_args.extend(str(v) for v in val)
+                        for v in val:
+                            tool_args += [flag, str(v)]
                     elif isinstance(val, bool):
                         if val:
-                            tool_args.append(f"--{key}")
+                            tool_args.append(flag)
                     else:
-                        tool_args.append(f"--{key}={val}")
-            elif workspace is None and request.arguments.get("flags"):
-                tool_args = list(request.arguments["flags"])
+                        tool_args += [flag, str(val)]
 
             try:
                 command = self.runtime.command_for(tool, request.target, ctx, limits, workspace, tool_args)

@@ -116,19 +116,29 @@ class DockerRuntime(Runtime):
             "--network", limits.network,
         ]
         if limits.read_only_fs:
-            flags += ["--read-only"]
+            flags += ["--read-only", "--tmpfs", "/tmp:rw,size=64m,exec"]
         if workspace is not None:
-            # Mount the authorized source tree read-only + a RedForge-managed
-            # per-run writable temp dir. The writable dir is provided by the
-            # execution service via workspace.tmp_root and is OUTSIDE the
-            # user-controlled source tree (never <source>/.redforge-tmp), so an
-            # untrusted source tree cannot redirect or poison the writable mount.
+            # Mount the authorized source tree read-only (if present) + a
+            # RedForge-managed per-run writable temp dir. The writable dir is
+            # provided by the execution service via workspace.tmp_root and is
+            # OUTSIDE the user-controlled source tree (never <source>/.redforge-tmp),
+            # so an untrusted source tree cannot redirect or poison the mount.
+            # URL tools (no source tree) still get the writable tmp dir for
+            # file inputs (nuclei templates, ffuf wordlists).
             tmp_host = workspace.tmp_root or os.path.join(workspace.root, ".redforge-tmp")
             os.makedirs(tmp_host, exist_ok=True)
-            flags += [
-                "--volume", f"{workspace.root}:{workspace.container_path}:ro",
-                "--volume", f"{tmp_host}:{workspace.writable_tmp}:rw",
-            ]
+            # Normalize to forward slashes — Docker on Windows handles
+            # `C:/...` reliably, while a backslash inside a --volume string can
+            # break parsing.
+            tmp_host = tmp_host.replace("\\", "/")
+            source_vol = (
+                f"{workspace.root.replace(chr(92), '/')}:{workspace.container_path}:ro"
+                if workspace.root
+                else None
+            )
+            if source_vol:
+                flags += ["--volume", source_vol]
+            flags += ["--volume", f"{tmp_host}:{workspace.writable_tmp}:rw"]
         return flags
 
     def _truncate(self, text: str, max_bytes: int) -> str:

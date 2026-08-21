@@ -1,36 +1,51 @@
-"""RedForge CLI — the Phase 1 vertical slice: target -> tool -> runtime -> JSON.
+"""RedForge CLI — target -> tool -> runtime -> JSON (security-enforced).
 
 Usage:
     redforge run --capability vulnerability-scanning --target https://example.com
+    redforge run --tool semgrep --target ./repo --kind source-dir
     redforge tools list
     redforge tools resolve --capability static-analysis
+    redforge skills list | resolve
+    redforge profile --path ./repo | --url https://site
+    redforge plan --path ./repo
+
+All tool execution flows through ToolExecutionService, which enforces
+AuthorizedWorkspace + Policy (fail-closed) before any runtime call — the CLI
+cannot bypass the security boundary.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
-import uuid
+from typing import Any
 
-from .models import RunContext, Target, TargetKind
+from .execution.service import ToolExecutionService
+from .execution.workspace import AuthorizedWorkspaceRegistry
+from .models import Target, TargetKind
+from .policy.engine import Policy, PolicyEngine
 from .runtime.base import DockerRuntime, RunError
-from .tools.executor import ToolExecutor
 from .tools.registry import ToolRegistry
 
 DEFAULT_TOOLS_DIR = "tools"
+DEFAULT_POLICY_FILE = "policy.yaml"
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="redforge", description="RedForge security platform CLI")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    run = sub.add_parser("run", help="run a tool/capability against a target")
+    run = sub.add_parser("run", help="run a tool/capability against a target (policy-enforced)")
     run.add_argument("--capability", help="capability to resolve to a tool")
     run.add_argument("--tool", help="concrete tool name to run")
     run.add_argument("--target", required=True, help="URL, repo, or source-dir value")
     run.add_argument("--kind", choices=[k.value for k in TargetKind], default="url")
     run.add_argument("--tools-dir", default=DEFAULT_TOOLS_DIR)
-    run.add_argument("--timeout", type=int, default=300)
+    run.add_argument("--policy-file", default=DEFAULT_POLICY_FILE)
+    run.add_argument("--path", help="relative path inside the workspace (source tools)")
+    run.add_argument("--arg", action="append", default=[], help="tool argument KEY=VALUE")
+    run.add_argument("--timeout", type=int, default=None)
 
     tl = sub.add_parser("tools", help="tool registry commands")
     tlsub = tl.add_subparsers(dest="tools_cmd", required=True)
@@ -52,7 +67,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     prof = sub.add_parser("profile", help="profile a source directory or URL")
     prof.add_argument("--path", help="local source directory to profile")
-    prof.add_argument("--url", help="URL to profile (stub in Phase 4)")
+    prof.add_argument("--url", help="URL to profile")
 
     plan = sub.add_parser("plan", help="break a repo into analysis tasks")
     plan.add_argument("--path", required=True, help="local source directory")
@@ -61,6 +76,14 @@ def _build_parser() -> argparse.ArgumentParser:
     w3 = sub.add_parser("web3", help="run the Solidity security pipeline")
     w3.add_argument("--path", required=True, help="path to Solidity source (Foundry project)")
     w3.add_argument("--json", action="store_true", help="emit machine-readable JSON")
+
+    scan = sub.add_parser("scan", help="run the full orchestrated scan (scope->profile->skill->tool->evidence->finding)")
+    scan.add_argument("--target", required=True, help="URL or source-dir target (must be authorized)")
+    scan.add_argument("--kind", choices=[k.value for k in TargetKind], default=None)
+    scan.add_argument("--tools-dir", default=DEFAULT_TOOLS_DIR)
+    scan.add_argument("--policy-file", default=DEFAULT_POLICY_FILE)
+    scan.add_argument("--db", default=None, help="SQLite path for persistence (default: in-memory)")
+    scan.add_argument("--agent", action="store_true", help="run the reference agent loop")
 
     return parser
 
@@ -76,26 +99,79 @@ def _load_registry(tools_dir: str) -> ToolRegistry:
     return registry
 
 
+def _load_policy(policy_file: str) -> Policy:
+    """Load a policy.yaml if present; otherwise the fail-closed default."""
+    if policy_file and os.path.isfile(policy_file):
+        try:
+            import yaml
+            with open(policy_file, "r", encoding="utf-8") as fh:
+                return Policy.from_dict(yaml.safe_load(fh).get("policy", {}))
+        except Exception as exc:
+            print(f"warning: could not load policy {policy_file!r}: {exc}", file=sys.stderr)
+    return Policy()
+
+
+def _build_service(registry: ToolRegistry, policy: Policy) -> tuple[ToolExecutionService, AuthorizedWorkspaceRegistry]:
+    """Build the secured execution service + shared workspace registry."""
+    workspaces = AuthorizedWorkspaceRegistry()
+    svc = ToolExecutionService(
+        registry, DockerRuntime(), PolicyEngine(policy), workspaces=workspaces,
+    )
+    return svc, workspaces
+
+
+def _parse_args_kv(items: list[str]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for item in items:
+        if "=" not in item:
+            out[item] = True
+            continue
+        k, v = item.split("=", 1)
+        out[k] = v
+    return out
+
+
 def _cmd_run(args: argparse.Namespace) -> int:
+    from .execution.models import ExecutionContext, ToolRequest
+    from .ids import scan_id, target_id, tool_request_id
+
     registry = _load_registry(args.tools_dir)
-    executor = ToolExecutor(registry, DockerRuntime())
+    policy = _load_policy(args.policy_file)
+    svc, workspaces = _build_service(registry, policy)
+
+    # The CLI is a trusted caller: for source-dir targets it registers the
+    # authorized workspace, so the tool can only ever see that root.
     target = Target(kind=TargetKind(args.kind), value=args.target)
-    ctx = RunContext(run_id=str(uuid.uuid4())[:8], timeout_s=args.timeout)
+    request = ToolRequest(
+        id=tool_request_id("cli"),
+        capability=args.capability or "",
+        tool_name=args.tool or "",
+        target=target,
+        context=ExecutionContext("", target_id(args.target), scan_id("cli")),
+        arguments=_parse_args_kv(args.arg),
+    )
+    if args.path:
+        request.arguments["path"] = args.path
+
+    if target.kind == TargetKind.SOURCE_DIR:
+        try:
+            ws = workspaces.register(target.value, label="cli-target")
+            request.workspace_id = ws.id
+        except Exception as exc:
+            print(f"error: target is not an authorized workspace: {exc}", file=sys.stderr)
+            return 1
 
     try:
-        if args.tool:
-            result = executor.run_tool(args.tool, target, ctx)
-        elif args.capability:
-            result = executor.run_capability(args.capability, target, ctx)
-        else:
-            print("error: provide --capability or --tool", file=sys.stderr)
-            return 2
-    except (RunError, KeyError) as exc:
+        outcome = svc.execute(request)
+    except (RunError, KeyError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    print(json.dumps(result.to_dict(), indent=2))
-    return 0 if result.exit_code == 0 else 1
+    run = outcome.tool_run
+    print(json.dumps(run.to_dict(), indent=2))
+    if run.status.value in ("success",):
+        return 0
+    return 1
 
 
 def _cmd_tools(args: argparse.Namespace) -> int:
@@ -226,6 +302,64 @@ def _cmd_web3(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_scan(args: argparse.Namespace) -> int:
+    """Full orchestrated scan: scope -> profile -> skill -> tool -> evidence -> finding."""
+    import tempfile
+
+    from .orchestrator.scan import Orchestrator
+    from .persistence.store import BlobStore, SqliteStore
+
+    registry = _load_registry(args.tools_dir)
+    policy = _load_policy(args.policy_file)
+    svc, _workspaces = _build_service(registry, policy)
+
+    is_url = (args.kind == "url") or (args.kind is None and args.target.startswith(("http://", "https://")))
+    _ = TargetKind.URL if is_url else TargetKind.SOURCE_DIR
+
+    # Persistence: user-provided SQLite path, else a scratch DB.
+    db_path = args.db
+    temp_db = None
+    if not db_path:
+        tmp_dir = tempfile.mkdtemp(prefix="redforge-scan-")
+        temp_db = os.path.join(tmp_dir, "scan.db")
+        db_path = temp_db
+    blob = BlobStore(os.path.join(os.path.dirname(os.path.abspath(db_path)), "blobs"))
+    db = SqliteStore(db_path, blob_store=blob)
+
+    orch = Orchestrator(
+        projects=db, targets=db, scans=db, tool_runs=db, artifacts=db,
+        evidence_repo=db, findings_repo=db, execution=svc,
+    )
+
+    agent = None
+    if args.agent:
+        from .agents.generic import agents as _agents
+        agent = _agents.ReconAgent() if is_url else _agents.CodeAgent()
+
+    result = orch.run(
+        target_value=args.target,
+        project_name="cli-scan",
+        tools_dir=args.tools_dir,
+        agent=agent,
+    )
+
+    out = {
+        "status": result.status.value,
+        "error": result.error,
+        "target": args.target,
+        "scan_id": result.context.scan_id,
+        "relevant_skills": result.relevant_skills,
+        "findings": [f.to_dict() for f in result.findings],
+        "tool_runs": [r.to_dict() for r in result.tool_runs],
+        "evidence_count": len(result.evidence),
+        "db": db_path,
+    }
+    print(json.dumps(out, indent=2))
+    if result.status.value in ("completed", "partial"):
+        return 0
+    return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     if args.command == "run":
@@ -240,6 +374,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_plan(args)
     if args.command == "web3":
         return _cmd_web3(args)
+    if args.command == "scan":
+        return _cmd_scan(args)
     return 2
 
 

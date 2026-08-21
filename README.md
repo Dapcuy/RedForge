@@ -71,8 +71,8 @@ to a live LLM, and the dashboard is a skeleton.
 |---------|--------|---------------------------|
 | `redforge/base:latest` | ✅ | — (base only) |
 | `redforge/code-runtime:latest` | ✅ | ✅ **Semgrep 1.95.0** real source scan (`test_semgrep_e2e.py`) |
+| `redforge/web-runtime:latest` | ✅ | 🔄 nuclei 3.3.7 / httpx 1.6.9 / ffuf 2.1.0 built; E2E validation in progress |
 | `redforge/test-runtime:latest` | ✅ | ✅ e2e-probe (workspace mount + persistence) |
-| `redforge/web-runtime:latest` | ❌ not built | ❌ nuclei/httpx/ffuf not validated |
 | `redforge/web3-runtime:latest` | ❌ not built | ❌ slither/foundry/echidna/mythril not validated |
 | `redforge/privileged:latest` | ❌ not built | ❌ nmap not validated (policy-gated) |
 

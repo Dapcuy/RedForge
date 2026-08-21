@@ -7,10 +7,21 @@ runtime:
   image: redforge/web-runtime
   entrypoint: httpx
   version: 1.6.9
+priority: 10
 inputs:
   target: url
+  u:
+    type: string
+    description: Single target URL (overrides positional target)
 output:
   format: json
+input_schema:
+  u:
+    type: string
+  json:
+    type: boolean
+  silent:
+    type: boolean
 trust:
   verified: false
   source: projectdiscovery/httpx (official release)

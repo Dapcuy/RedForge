@@ -103,7 +103,7 @@ class PolicyEngine:
             return True
         host = value.split("://", 1)[-1].split("/", 1)[0].lower()
         host = host.split(":")[0]
-        if host in {"localhost", "127.0.0.1", "::1"}:
+        if host in {"localhost", "127.0.0.1", "::1", "host.docker.internal"}:
             return True
         if host.endswith((".local", ".localhost")):
             return True
@@ -199,7 +199,10 @@ class PolicyEngine:
             base.pids_limit = override.pids_limit
             base.read_only_fs = base.read_only_fs or override.read_only_fs
             base.max_output_bytes = override.max_output_bytes
-            if _network_level(override.network) <= _network_level(self.policy.limits.network):
+            # Network is ONLY overridden when the per-tool config explicitly
+            # sets it; an unset network must never downgrade the policy level
+            # (a per-tool {memory} config must not silently disable networking).
+            if "network" in tool_override and _network_level(override.network) <= _network_level(self.policy.limits.network):
                 base.network = override.network
             # else: network stays at policy level; check_network enforces it.
 

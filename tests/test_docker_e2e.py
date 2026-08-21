@@ -40,7 +40,19 @@ def _docker_available() -> bool:
         return False
 
 
-pytestmark = pytest.mark.skipif(not _docker_available(), reason="Docker daemon not available")
+def _image_built() -> bool:
+    try:
+        proc = subprocess.run(["docker", "image", "inspect", "redforge/test-runtime:latest"],
+                              capture_output=True, text=True, timeout=10)
+        return proc.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+pytestmark = [
+    pytest.mark.skipif(not _docker_available(), reason="Docker daemon not available"),
+    pytest.mark.skipif(not _image_built(), reason="test-runtime image not built"),
+]
 
 
 @pytest.fixture

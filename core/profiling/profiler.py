@@ -111,13 +111,91 @@ def profile_directory(path: str, target_value: str | None = None) -> TargetProfi
     return profiler.profile(Target(TargetKind.SOURCE_DIR, target_value or path))
 
 
-def profile_url(url: str) -> TargetProfile:
-    """Stub for URL fingerprinting (headers/paths).
+def profile_url(url: str, timeout_s: float = 10.0) -> TargetProfile:
+    """Profile a live URL by HTTP fingerprinting.
 
-    Phase 5 wires this to real HTTP fingerprinting. For now it returns a
-    minimal profile with the URL as the only indicator.
+    Detects (best-effort, stdlib only):
+      - server header
+      - X-Powered-By / technology headers
+      - generator meta / title hints
+      - framework indicators (wp-content, next, etc.)
+
+    Fails soft: on any network/HTTP error it returns a minimal profile with
+    the URL as the only indicator (never raises — the orchestrator/policy
+    decides whether the target is reachable/authorized).
     """
+    import re
+    from urllib.error import HTTPError, URLError
+    from urllib.request import Request, urlopen
+
+    technologies: set[str] = set()
+    frameworks: set[str] = set()
+    indicators: list[str] = [url]
+
+    req = Request(url, headers={"User-Agent": "RedForge-Profiler/0.1"})
+    try:
+        with urlopen(req, timeout=timeout_s) as resp:
+            status = getattr(resp, "status", 0)
+            headers = dict(resp.headers.items())
+            try:
+                body = resp.read(65536).decode("utf-8", errors="replace")
+            except Exception:
+                body = ""
+    except HTTPError as exc:
+        status = exc.code
+        headers = dict(exc.headers.items()) if exc.headers else {}
+        body = ""
+    except (URLError, OSError, ValueError):
+        indicators.append(f"unreachable:{url}")
+        return TargetProfile(
+            target=Target(TargetKind.URL, url),
+            technologies=[],
+            frameworks=[],
+            indicators=indicators,
+            languages=[],
+        )
+
+    indicators.append(f"status:{status}")
+
+    def _hdr(name: str) -> str:
+        """Case-insensitive header lookup."""
+        for k, v in headers.items():
+            if k.lower() == name.lower():
+                return v
+        return ""
+
+    server = _hdr("server")
+    if server:
+        technologies.add(server.lower().split("/")[0])
+        indicators.append(f"server:{server}")
+
+    powered = _hdr("x-powered-by")
+    if powered:
+        tech = powered.lower()
+        technologies.add(tech)
+        indicators.append(f"x-powered-by:{powered}")
+
+    if "wp-content" in body or "wordpress" in body.lower():
+        frameworks.add("wordpress")
+        technologies.add("php")
+        indicators.append("wp-content")
+    if "next" in _hdr("x-nextjs").lower() or "/_next/" in body:
+        frameworks.add("nextjs")
+        technologies.add("react")
+        indicators.append("nextjs")
+    if "csrf" in body.lower() and ("django" in body.lower() or "csrftoken" in _hdr("set-cookie").lower()):
+        frameworks.add("django")
+        technologies.add("python")
+        indicators.append("django-csrftoken")
+
+    m = re.search(r"<title>([^<]{1,120})</title>", body, re.IGNORECASE)
+    if m:
+        indicators.append(f"title:{m.group(1).strip()}")
+
     return TargetProfile(
         target=Target(TargetKind.URL, url),
-        indicators=[url],
+        technologies=sorted(technologies),
+        frameworks=sorted(frameworks),
+        indicators=sorted(set(indicators)),
+        languages=[],
     )

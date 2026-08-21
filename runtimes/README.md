@@ -8,7 +8,7 @@ maintainability win.
 ```
 runtimes/
 ├── base/         # python 3.11-slim + node + go + curl/git (shared base) — BUILT
-├── web/          # httpx, nuclei, ffuf (built on base)
+├── web/          # nuclei 3.3.7, httpx 1.6.9, ffuf 2.1.0 (pinned) — BUILT + E2E-validated
 ├── code/         # semgrep==1.95.0 (pinned) — BUILT + validated by real Docker E2E
 ├── web3/         # foundry, slither, echidna, mythril (built on base)
 ├── privileged/   # nmap (needs host/network access; gated by policy)
@@ -20,14 +20,20 @@ runtimes/
 ```bash
 docker build -t redforge/base:latest runtimes/base
 docker build -t redforge/code-runtime:latest runtimes/code
+docker build -t redforge/web-runtime:latest runtimes/web
 docker compose build            # build all production images
 docker compose build test       # build the tiny E2E test runtime
 ```
 
-`redforge/code-runtime` is the first **real production tool image** that has
-been validated: it installs Semgrep **1.95.0** (pinned in the Dockerfile, must
-match `tools/semgrep.tool.yaml`), and `tests/test_semgrep_e2e.py` runs the real
-binary against a vulnerable fixture mounted at `/workspace:ro`.
+`redforge/code-runtime` is a **real production tool image** that has been
+validated: it installs Semgrep **1.95.0** (pinned in the Dockerfile, must match
+`tools/semgrep.tool.yaml`), and `tests/test_semgrep_e2e.py` runs the real binary
+against a vulnerable fixture mounted at `/workspace:ro`.
+
+`redforge/web-runtime` is also **built + validated**: nuclei **3.3.7**,
+projectdiscovery/httpx **1.6.9**, ffuf **2.1.0** (pinned via `go install @version`).
+`tests/test_web_runtime_e2e.py` runs the real binaries against a LOCAL lab
+server (127.0.0.1) — no external targets.
 
 ## Workspace mounting
 
