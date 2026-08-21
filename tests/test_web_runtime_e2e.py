@@ -170,8 +170,9 @@ def test_nuclei_real_with_local_template(service, lab_server, tmp_path):
         "id: redforge-lab-admin\n"
         "info:\n"
         "  name: Lab Admin Detector\n"
+        "  author: redforge\n"
         "  severity: info\n"
-        "requests:\n"
+        "http:\n"
         "  - method: GET\n"
         "    path:\n"
         "      - \"{{BaseURL}}/admin\"\n"
@@ -181,8 +182,18 @@ def test_nuclei_real_with_local_template(service, lab_server, tmp_path):
         "          - \"admin area\"\n",
         encoding="utf-8",
     )
-    req = _req("nuclei", "template-scanning", lab_server, "nuclei", template=str(template), jsonl=True, duc=True, silent=True)
-    outcome = service.execute(req)
+    req = _req("nuclei", "template-scanning", lab_server, "nuclei",
+               u=lab_server, template=str(template), jsonl=True, duc=True, silent=True)
+    # host.docker.internal resolution from a fresh container is occasionally
+    # flaky on Docker Desktop (Windows): nuclei may exit 0 with no output when
+    # it cannot reach the host alias. Retry once — this is an infra flake, not
+    # a RedForge logic failure.
+    outcome = None
+    for attempt in range(2):
+        outcome = service.execute(req)
+        run = outcome.tool_run
+        if any(a.kind == "stdout" and a.content.strip() for a in outcome.artifacts):
+            break
     run = outcome.tool_run
     # nuclei exit code is non-zero when findings exist with -jsonl; the run
     # still produced real output. Accept success OR failed-with-output.

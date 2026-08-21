@@ -119,7 +119,8 @@ def test_real_semgrep_scan_end_to_end(tmp_path, code_runtime, registry):
     # --- 2. Workspace mounted: command must mount host fixture -> /workspace:ro,
     # and semgrep must scan /workspace (not a copied tree). ---
     cmd = run.command
-    assert any(f"{FIXTURE_DIR}:/workspace:ro" in c for c in cmd), f"workspace not mounted ro: {cmd}"
+    fixture_ro = f"{str(FIXTURE_DIR).replace(chr(92), '/')}:/workspace:ro"
+    assert any(fixture_ro in c for c in cmd), f"workspace not mounted ro: {cmd}"
     # semgrep entrypoint + /workspace as the scan target (path may be /workspace or /workspace/)
     assert any("/workspace" in c and "semgrep" in c for c in cmd), f"semgrep not scanning /workspace: {cmd}"
     scan_targets = [c for c in cmd if c.startswith("/workspace")]
