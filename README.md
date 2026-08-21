@@ -52,18 +52,32 @@ to a live LLM, and the dashboard is a skeleton.
 
 ```text
 01. Architecture        ✅  Phase 0
-02. Docker Runtime      ✅  Phase 1 (code-runtime built; real Semgrep 1.95.0 source scan validated in Docker)
+02. Docker Runtime      ✅  Phase 1 (base + code-runtime built; real Semgrep 1.95.0 source scan validated in Docker)
 03. Tool Registry       ✅  Phase 1 (10 tool manifests, pinned versions, trust, input schema)
 04. Skill Engine        ✅  Phase 2 (parser + registry + resolver, schema v2)
 05. Evidence/Finding    ✅  Phase 3 (dedup + correlation + judge + REJECTED + lifecycle)
 06. Code Analysis       ✅  Phase 4 (profiler + planner)
-07. Web Dynamic Test    🟡  Phase 5 (policy engine + adapters written; tools not wired live)
-08. Web3/EVM Security   ✅  Phase 6 (Solidity pipeline)
-09. Multi-Agent         🟡  Phase 8 (interface + dispatcher; no live LLM agent yet)
+07. Web Dynamic Test    🟡  Phase 5 (policy engine + adapters written; web-runtime image not validated)
+08. Web3/EVM Security   🟡  Phase 6 (Solidity pipeline; web3-runtime image not validated)
+09. Multi-Agent         🟡  Phase 8 (interface + dispatcher; no live LLM/Hermes agent yet)
 10. Web Dashboard       🟡  Phase 9 (stdlib skeleton; not a full UI)
 ```
 
 ✅ = implemented and tested · 🟡 = implemented, needs real infra/live wiring.
+
+### Docker validation status (current truth)
+
+| Runtime | Built? | Validated with real tool? |
+|---------|--------|---------------------------|
+| `redforge/base:latest` | ✅ | — (base only) |
+| `redforge/code-runtime:latest` | ✅ | ✅ **Semgrep 1.95.0** real source scan (`test_semgrep_e2e.py`) |
+| `redforge/test-runtime:latest` | ✅ | ✅ e2e-probe (workspace mount + persistence) |
+| `redforge/web-runtime:latest` | ❌ not built | ❌ nuclei/httpx/ffuf not validated |
+| `redforge/web3-runtime:latest` | ❌ not built | ❌ slither/foundry/echidna/mythril not validated |
+| `redforge/privileged:latest` | ❌ not built | ❌ nmap not validated (policy-gated) |
+
+**Not wired yet:** live LLM/Hermes agent (adapter exists, no live connection).
+**Dashboard:** stdlib skeleton, not a full UI.
 
 ### Hardening status (P0/P1/P2)
 
@@ -74,6 +88,10 @@ to a live LLM, and the dashboard is a skeleton.
 - **P0 — Workspace:** first-class Workspace abstraction; Docker mounts the
   authorized source tree read-only at `/workspace` + writable temp; no
   arbitrary host mounts. ✅
+- **P0 — Workspace authorization (final pass):** `AuthorizedWorkspaceRegistry` —
+  agents reference an opaque `workspace_id`, never a host path. Unknown ids and
+  unregistered paths are rejected; restricted/system paths (`.ssh`, `/etc`, ...)
+  are blocked; symlink escape rejected. ✅
 - **P0 — Policy:** network modeled as ordered capability (none < bridge < host),
   escalation denied; scope/network/capability/destructive/privileged separated;
   external URLs denied by default (fail-closed). ✅
@@ -86,6 +104,10 @@ to a live LLM, and the dashboard is a skeleton.
 - **P1 — Runtime:** Docker E2E test (tiny deterministic runtime) verifies real
   container execution + workspace mount + artifact/evidence + SQLite. ✅
 - **P1 — Reproducibility:** tool versions pinned; trust metadata per manifest. ✅
+- **P0 — Temp dir security (final pass):** per-run writable dir is
+  RedForge-managed (`<tmp>/redforge-runs/<run-id>`), OUTSIDE the user-controlled
+  source tree; source tree stays read-only; symlink/reparse-point mount
+  redirects rejected. ✅
 - **P1 — Persistence:** repository Protocols + SQLite + blob store; full
   ExecutionContext restore; unit-of-work transactions. ✅
 - **P1 — Registry:** deterministic priority selection + input-schema validation

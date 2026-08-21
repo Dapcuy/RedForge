@@ -84,9 +84,11 @@ class ToolRequest:
         tool_name:  optional preferred tool name (empty = resolver default).
         target:     what to run against.
         context:    correlation context (project/target/scan/...).
-        workspace:  optional authorized Workspace for source targets. NEVER
-                    supplied by the agent; derived from the target by the
-                    orchestrator and validated by the execution service.
+        workspace_id: opaque handle to an AuthorizedWorkspace. NEVER a host
+                    path — the agent can only reference an id that a trusted
+                    caller registered. Resolved by the execution service.
+        workspace:  reserved (internal); the execution service populates it
+                    after resolving workspace_id. Do NOT set this in requests.
         arguments:  tool-specific arguments (validated against input schema).
         source:     which agent requested this (provenance).
         limits:     optional per-request limits; if unset, policy defaults apply.
@@ -96,6 +98,7 @@ class ToolRequest:
     target: Target
     context: ExecutionContext
     tool_name: str = ""
+    workspace_id: str = ""
     workspace: Workspace | None = None
     arguments: dict[str, Any] = field(default_factory=dict)
     source: str = ""

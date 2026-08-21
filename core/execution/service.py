@@ -9,19 +9,29 @@ This service owns the whole chain. Agents (and everything else) submit a
 ``ToolRun`` and ``Artifact`` provenance records.
 
 Security properties:
-- Workspace: only the authorized Workspace (validated here) is mounted.
-  A ToolRequest can never add host mounts.
+- Workspace: ONLY an AuthorizedWorkspace (registered by a trusted caller and
+  referenced by opaque ``workspace_id``) is mounted. A ToolRequest can never
+  supply a host path, and unknown ids are rejected. See
+  ``AuthorizedWorkspaceRegistry``.
+- Temp dir: per-run writable dirs are created by RedForge under a managed
+  root (``workspace.tmp_root``), NEVER inside the user-controlled source tree.
+  The source tree stays read-only at /workspace.
 - Concurrency: max_parallel_runs is enforced atomically via a semaphore, not
   a racy active-count check.
 - Policy is checked before any runtime call.
 
 The core stays agent- and runtime-independent: this service depends only on the
-Policy engine, Tool registry, and the Runtime *interface*.
+Policy engine, Tool registry, the Runtime *interface*, and the workspace
+registry.
 """
 from __future__ import annotations
 
+import os
+import shutil
+import tempfile
 import threading
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from ..ids import artifact_id, tool_run_id
@@ -35,7 +45,12 @@ from .models import (
     ToolRun,
     utcnow_iso,
 )
-from .workspace import make_workspace, validate_workspace_path
+from .workspace import (
+    AuthorizedWorkspace,
+    AuthorizedWorkspaceRegistry,
+    Workspace,
+    WorkspaceAuthorizationError,
+)
 
 
 @dataclass
@@ -59,16 +74,95 @@ class ToolExecutionService:
         registry: ToolRegistry,
         runtime: Runtime,
         policy: PolicyEngine,
+        workspaces: AuthorizedWorkspaceRegistry | None = None,
         max_concurrency: int | None = None,
+        tmp_root: str | None = None,
     ) -> None:
         self.registry = registry
         self.runtime = runtime
         self.policy = policy
-        # Concurrency limit from policy (or explicit override). Uses a semaphore
-        # so the limit is atomic across threads — no racy active-count check.
+        # The ONLY way a host path becomes a workspace. If no registry is
+        # injected, an empty one is created — source-dir requests without a
+        # registered workspace_id are REJECTED (fail-closed).
+        self.workspaces = workspaces or AuthorizedWorkspaceRegistry()
+        # RedForge-managed temp root for per-run writable dirs (outside any
+        # user-controlled source tree).
+        self.tmp_root = tmp_root or os.path.join(tempfile.gettempdir(), "redforge-runs")
+        os.makedirs(self.tmp_root, exist_ok=True)
         if max_concurrency is None:
             max_concurrency = self.policy.policy.max_parallel_runs
         self._semaphore = threading.BoundedSemaphore(max_concurrency)
+        self._tmp_dirs: dict[str, str] = {}
+        self._tmp_lock = threading.Lock()
+
+    # ------------------------------------------------------------------
+    # Workspace resolution
+    # ------------------------------------------------------------------
+    def resolve_workspace(self, request: ToolRequest) -> AuthorizedWorkspace | None:
+        """Resolve the authorized workspace for a request.
+
+        FAIL-CLOSED:
+        - A ``workspace_id`` is resolved through the registry; unknown ids are
+          rejected.
+        - A raw host path in ``target.value`` for SOURCE_DIR targets is only
+          accepted if it was registered (legacy path) — the service never
+          *derives* a mount from unregistered agent input.
+        - URL targets never get a workspace.
+        """
+        # Explicit workspace_id is the only agent-facing mechanism.
+        if request.workspace_id:
+            return self.workspaces.resolve(request.workspace_id)
+
+        # Backward-compatible path: source-dir targets may carry a registered
+        # host path, but it must already be in the registry (registered by the
+        # trusted caller). If the exact path was never authorized, reject.
+        if request.target.kind == TargetKind.SOURCE_DIR and request.target.value:
+            root = str(Path(request.target.value).expanduser().resolve())
+            for wid in self.workspaces.list_ids():
+                ws = self.workspaces.resolve(wid)
+                if os.path.normcase(os.path.abspath(ws.root)) == os.path.normcase(os.path.abspath(root)):
+                    return ws
+            raise WorkspaceAuthorizationError(
+                f"target path is not an authorized workspace: {request.target.value!r}"
+            )
+        return None
+
+    def _make_per_run_tmp(self, wid: str, run_id: str) -> str:
+        """Create a RedForge-managed per-run writable dir OUTSIDE the source tree."""
+        run_tmp = os.path.join(self.tmp_root, f"{wid}-{run_id}")
+        os.makedirs(run_tmp, exist_ok=True)
+        with self._tmp_lock:
+            self._tmp_dirs[run_id] = run_tmp
+        return run_tmp
+
+    def cleanup_run_tmp(self, run_id: str) -> None:
+        with self._tmp_lock:
+            d = self._tmp_dirs.pop(run_id, None)
+        if d and os.path.isdir(d):
+            shutil.rmtree(d, ignore_errors=True)
+
+    # ------------------------------------------------------------------
+    # Argument remapping
+    # ------------------------------------------------------------------
+    def _remap_workspace_paths(
+        self,
+        request: ToolRequest,
+        workspace: Workspace | None,
+    ) -> ToolRequest:
+        """Rewrite workspace-relative file arguments to container paths.
+
+        ``path`` and ``config`` are mapped under the container workspace path.
+        Anything else is untouched. Host paths are never emitted.
+        """
+        if workspace is None:
+            return request
+        args = dict(request.arguments)
+        for key in ("path", "config"):
+            if args.get(key) and not str(args[key]).startswith(workspace.container_path):
+                rel = str(args[key]).lstrip("./")
+                args[key] = f"{workspace.container_path}/{rel}"
+        request.arguments = args
+        return request
 
     def _resolve_tool(self, request: ToolRequest):
         if request.tool_name:
@@ -78,24 +172,6 @@ class ToolExecutionService:
         else:
             tool = self.registry.resolve_capability(request.capability)
         return tool
-
-    def _validate_workspace(self, request: ToolRequest):
-        """Derive and validate the workspace for source targets.
-
-        The agent/request NEVER supplies host mounts. For a source-dir target,
-        we require the target.value to be a valid workspace path. For a URL
-        target, no workspace is mounted (network-only tools).
-        """
-        if request.workspace is not None:
-            # A caller-supplied workspace must still pass validation.
-            validate_workspace_path(request.workspace.root)
-            return request.workspace
-
-        if request.target.kind == TargetKind.SOURCE_DIR and request.target.value:
-            root = validate_workspace_path(request.target.value)
-            return make_workspace(root)
-
-        return None
 
     def _build_artifacts(self, run: ToolRun, result: RunResult) -> list[Artifact]:
         artifacts: list[Artifact] = []
@@ -119,36 +195,13 @@ class ToolExecutionService:
             ))
         return artifacts
 
-    def _remap_workspace_paths(
-        self,
-        request: ToolRequest,
-        workspace,
-    ) -> ToolRequest:
-        """Rewrite arguments.path to the container workspace path.
-
-        Tools that consume a file inside the source tree (semgrep, slither,
-        foundry, e2e-probe) receive a path relative to the workspace. Because
-        the workspace is mounted at ``container_path``, the argument must point
-        there, not at the host path. We only rewrite the ``path`` argument when
-        a workspace is present; all other arguments are untouched.
-        """
-        if workspace is None:
-            return request
-        args = dict(request.arguments)
-        # Rewrite workspace-relative file arguments to container paths.
-        for key in ("path", "config"):
-            if args.get(key) and not str(args[key]).startswith(workspace.container_path):
-                rel = str(args[key]).lstrip("./")
-                args[key] = f"{workspace.container_path}/{rel}"
-        request.arguments = args
-        return request
-
     def execute(self, request: ToolRequest) -> ExecutionOutcome:
         """Execute a ToolRequest end-to-end under the concurrency semaphore.
 
         Returns an ExecutionOutcome (ToolRun + artifacts). Raises
-        ``PolicyViolation`` (from the policy engine), ``RunError`` (from the
-        runtime), or ``ValueError`` (bad tool arguments) on failure.
+        ``WorkspaceAuthorizationError`` (unknown workspace), ``PolicyViolation``
+        (from the policy engine), ``RunError`` (from the runtime), or
+        ``ValueError`` (bad tool arguments) on failure.
         """
         # 1. Resolve capability -> tool (before policy, so policy sees tool name).
         tool = self._resolve_tool(request)
@@ -156,23 +209,31 @@ class ToolExecutionService:
         # 1b. Validate arguments against the tool's input schema (if any).
         self.registry.validate_arguments(tool, request.arguments)
 
-        # 2. Validate workspace (before policy: policy may scope by workspace).
-        workspace = self._validate_workspace(request)
-        request = self._remap_workspace_paths(request, workspace)
+        # 2. Resolve the AUTHORIZED workspace (never agent-derived host mounts).
+        aws = self.resolve_workspace(request)
 
         # 3. Policy gate (returns effective limits); runs under the semaphore.
         with self._semaphore:
             limits = self.policy.check_request(request, tool.name)
             self.policy.check_privileged(tool.image)
 
-            # 4. Build the run context and execute through the runtime interface.
             run_id = tool_run_id(request.context.scan_id, request.id)
             ctx = RunContext(run_id=run_id, timeout_s=limits.timeout_s, env=request.arguments.get("env", {}))
 
-            # Tool arguments: for source tools, the (container-remapped) path is
-            # passed explicitly, followed by any additional tool arguments
-            # (e.g. --json for semgrep). Without a workspace, the raw target
-            # value is used by the runtime.
+            # 4. Build the runtime Workspace: RedForge-managed per-run tmp dir
+            #    OUTSIDE the source tree; the source tree stays read-only.
+            workspace: Workspace | None = None
+            if aws is not None:
+                run_tmp = self._make_per_run_tmp(aws.id, run_id)
+                workspace = Workspace(
+                    root=aws.root,
+                    container_path=aws.container_path,
+                    writable_tmp=aws.writable_tmp,
+                    tmp_root=run_tmp,   # host path of the managed per-run tmp dir
+                )
+            request = self._remap_workspace_paths(request, workspace)
+
+            # Tool arguments (container-remapped paths + flags).
             tool_args: list[str] | None = None
             if workspace is not None and request.arguments.get("path"):
                 tool_args = [request.arguments["path"]]
@@ -187,15 +248,18 @@ class ToolExecutionService:
                     else:
                         tool_args.append(f"--{key}={val}")
             elif workspace is None and request.arguments.get("flags"):
-                # Non-workspace tools may still receive explicit flags.
                 tool_args = list(request.arguments["flags"])
 
-            command = self.runtime.command_for(tool, request.target, ctx, limits, workspace, tool_args)
-            started_at = utcnow_iso()
-            result = self.runtime.run(
-                tool, request.target, ctx,
-                limits=limits, workspace=workspace, args=tool_args,
-            )
+            try:
+                command = self.runtime.command_for(tool, request.target, ctx, limits, workspace, tool_args)
+                started_at = utcnow_iso()
+                result = self.runtime.run(
+                    tool, request.target, ctx,
+                    limits=limits, workspace=workspace, args=tool_args,
+                )
+            finally:
+                # Always clean up the per-run temp dir, even on failure.
+                self.cleanup_run_tmp(run_id)
 
             # 5. Wrap the result in provenance-aware ToolRun + Artifacts.
             run = ToolRun(

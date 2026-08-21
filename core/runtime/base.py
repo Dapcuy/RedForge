@@ -118,10 +118,12 @@ class DockerRuntime(Runtime):
         if limits.read_only_fs:
             flags += ["--read-only"]
         if workspace is not None:
-            # Mount the authorized source tree read-only + a controlled writable
-            # temp dir (a subdir of the workspace so it stays under the same
-            # authorization boundary, but is separate from the source tree).
-            tmp_host = os.path.join(workspace.root, ".redforge-tmp")
+            # Mount the authorized source tree read-only + a RedForge-managed
+            # per-run writable temp dir. The writable dir is provided by the
+            # execution service via workspace.tmp_root and is OUTSIDE the
+            # user-controlled source tree (never <source>/.redforge-tmp), so an
+            # untrusted source tree cannot redirect or poison the writable mount.
+            tmp_host = workspace.tmp_root or os.path.join(workspace.root, ".redforge-tmp")
             os.makedirs(tmp_host, exist_ok=True)
             flags += [
                 "--volume", f"{workspace.root}:{workspace.container_path}:ro",

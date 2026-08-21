@@ -75,6 +75,22 @@ class Orchestrator:
         self.agent_runs = agent_runs
         self._last_evidence: Any | None = None
 
+    def _authorize_target(self, target_value: str) -> str | None:
+        """Register a source-dir target as an AuthorizedWorkspace (trusted side).
+
+        Returns the opaque workspace_id (empty for URL targets). The agent can
+        only reference this id — it never sees or invents the host path.
+        """
+        if self.execution is None:
+            return None
+        if target_value.startswith(("http://", "https://")):
+            return None
+        from pathlib import Path
+
+        root = str(Path(target_value).expanduser().resolve())
+        ws = self.execution.workspaces.register(root, label="scan-target")
+        return ws.id
+
     def _persist_scan(self, ctx: ExecutionContext, status: ScanStatus) -> None:
         self.scans.add_scan(ctx.scan_id, ctx.project_id, ctx.target_id, status.value)
 
@@ -144,6 +160,10 @@ class Orchestrator:
                 tkind = TargetKind.URL if is_url else TargetKind.SOURCE_DIR
                 self.execution.policy.check_target(Target(kind=tkind, value=target_value))
 
+            # 3c. Authorize the source target as a Workspace (trusted side).
+            #     The agent will only ever see the opaque workspace_id.
+            authorized_ws_id = self._authorize_target(target_value)
+
             # 4. Resolve skills (if a skills dir is available).
             relevant_skills: list[str] = []
             try:
@@ -188,6 +208,10 @@ class Orchestrator:
                 if self.execution is not None:
                     for req in dispatch.tool_requests:
                         try:
+                            # The agent never picks the host path; it gets the
+                            # authorized workspace_id from the orchestrator.
+                            if authorized_ws_id:
+                                req.workspace_id = authorized_ws_id
                             outcome = self.execution.execute(req)
                             run = outcome.tool_run
                             self._persist_tool_records(run, outcome.artifacts, sid, req.source)

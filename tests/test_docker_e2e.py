@@ -21,6 +21,7 @@ import pytest
 
 from core.execution.models import ExecutionContext, ToolRequest
 from core.execution.service import ToolExecutionService
+from core.execution.workspace import AuthorizedWorkspaceRegistry
 from core.ids import scan_id, target_id, tool_request_id
 from core.models import Target, TargetKind
 from core.persistence.store import BlobStore, SqliteStore
@@ -66,7 +67,9 @@ def test_docker_e2e_executes_container_and_persists(tmp_path, workspace, docker_
     registry = ToolRegistry()
     registry.load_dir(TOOLS_DIR)
     policy = Policy(per_tool_limits={"e2e-probe": {"timeout_s": 60, "memory_mb": 512}})
-    svc = ToolExecutionService(registry, docker_runtime, PolicyEngine(policy))
+    workspaces = AuthorizedWorkspaceRegistry()
+    wid = workspaces.register(workspace, label="e2e").id
+    svc = ToolExecutionService(registry, docker_runtime, PolicyEngine(policy), workspaces=workspaces)
 
     request = ToolRequest(
         id=tool_request_id("docker"),
@@ -74,6 +77,7 @@ def test_docker_e2e_executes_container_and_persists(tmp_path, workspace, docker_
         tool_name="e2e-probe",
         target=Target(TargetKind.SOURCE_DIR, workspace),
         context=ExecutionContext("prj_e2e", target_id(workspace), scan_id("docker")),
+        workspace_id=wid,
         arguments={"path": "app.py"},
     )
 
@@ -120,7 +124,9 @@ def test_docker_workspace_mounted_read_only(tmp_path, workspace, docker_runtime)
     """The workspace must be mounted read-only: writing to it fails."""
     registry = ToolRegistry()
     registry.load_dir(TOOLS_DIR)
-    svc = ToolExecutionService(registry, docker_runtime, PolicyEngine(Policy()))
+    workspaces = AuthorizedWorkspaceRegistry()
+    wid = workspaces.register(workspace, label="ro").id
+    svc = ToolExecutionService(registry, docker_runtime, PolicyEngine(Policy()), workspaces=workspaces)
 
     request = ToolRequest(
         id=tool_request_id("ro"),
@@ -128,6 +134,7 @@ def test_docker_workspace_mounted_read_only(tmp_path, workspace, docker_runtime)
         tool_name="e2e-probe",
         target=Target(TargetKind.SOURCE_DIR, workspace),
         context=ExecutionContext("prj_ro", target_id(workspace), scan_id("ro")),
+        workspace_id=wid,
         arguments={"path": "app.py"},
     )
 

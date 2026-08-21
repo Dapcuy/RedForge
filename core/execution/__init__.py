@@ -16,23 +16,32 @@ from .models import (
     ToolRun,
     utcnow_iso,
 )
-from .workspace import Workspace, WorkspaceError, make_workspace, validate_workspace_path
+from .workspace import (
+    AuthorizedWorkspace,
+    AuthorizedWorkspaceRegistry,
+    Workspace,
+    WorkspaceAuthorizationError,
+    WorkspaceBoundaryError,
+    make_workspace,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     from .service import ToolExecutionService
 
 __all__ = [
     "Artifact",
+    "AuthorizedWorkspace",
+    "AuthorizedWorkspaceRegistry",
     "ExecutionContext",
     "ResourceLimits",
     "ToolExecutionService",
     "ToolRequest",
     "ToolRun",
     "Workspace",
-    "WorkspaceError",
+    "WorkspaceAuthorizationError",
+    "WorkspaceBoundaryError",
     "make_workspace",
     "utcnow_iso",
-    "validate_workspace_path",
 ]
 
 

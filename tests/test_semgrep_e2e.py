@@ -23,6 +23,7 @@ from core.evidence.models import make_evidence
 from core.evidence.normalizer import normalize_evidence
 from core.execution.models import ExecutionContext, ToolRequest
 from core.execution.service import ToolExecutionService
+from core.execution.workspace import AuthorizedWorkspaceRegistry
 from core.findings.engine import FindingEngine
 from core.findings.models import EvidenceLocation, EvidenceLocationKind, Severity
 from core.ids import scan_id, target_id, tool_request_id
@@ -99,9 +100,12 @@ def test_real_semgrep_scan_end_to_end(tmp_path, code_runtime, registry):
     db = SqliteStore(str(tmp_path / "redforge.db"), blob_store=blob)
 
     policy = Policy(per_tool_limits={"semgrep": {"timeout_s": 300, "memory_mb": 1024}})
-    svc = ToolExecutionService(registry, code_runtime, PolicyEngine(policy))
+    workspaces = AuthorizedWorkspaceRegistry()
+    wid = workspaces.register(str(FIXTURE_DIR), label="semgrep").id
+    svc = ToolExecutionService(registry, code_runtime, PolicyEngine(policy), workspaces=workspaces)
 
     request = _request(registry, "real")
+    request.workspace_id = wid
     outcome = svc.execute(request)
     run = outcome.tool_run
 

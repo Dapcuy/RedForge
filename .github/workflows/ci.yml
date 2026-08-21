@@ -31,8 +31,8 @@ jobs:
       - name: Type check (mypy)
         run: uv run --python .venv/bin/python mypy core/ --ignore-missing-imports
 
-      - name: Unit + integration + E2E tests
-        run: uv run --python .venv/bin/python -m pytest -q
+      - name: Unit + integration + fast E2E tests
+        run: uv run --python .venv/bin/python -m pytest -q -m "not docker_e2e"
 
   docker:
     runs-on: ubuntu-latest
@@ -42,12 +42,23 @@ jobs:
       - name: Validate compose file
         run: docker compose config --quiet
 
-      - name: Build base runtime image
-        run: docker compose build base
+      # Build every service exactly as docker-compose.yml defines them.
+      # Compose builds dependencies (base) before dependents (web/code/web3),
+      # and the `test` service is defined in compose too.
+      - name: Build all runtime images (compose)
+        run: docker compose build
 
-      - name: Build + smoke-test the tiny E2E runtime
+      - name: Smoke-test the tiny E2E runtime image
         run: |
-          docker compose build test
-          # Docker E2E tests run in the test job when a daemon is present;
-          # here we at least prove the test image builds.
           docker image inspect redforge/test-runtime:latest >/dev/null
+          docker run --rm redforge/test-runtime:latest /usr/local/bin/e2e_tool.py /tmp/nope || test $? -ne 0
+
+      - name: Verify Semgrep version in code-runtime
+        run: |
+          docker run --rm redforge/code-runtime:latest semgrep --version | grep -q "1.95.0"
+
+      - name: Real Docker E2E tests (semgrep + workspace mount + persistence)
+        run: |
+          uv venv .venv
+          uv pip install --python .venv/bin/python pyyaml pytest
+          uv run --python .venv/bin/python -m pytest -q -m docker_e2e

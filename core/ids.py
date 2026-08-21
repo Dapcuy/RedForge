@@ -20,6 +20,7 @@ _PREFIXES: dict[str, str] = {
     "artifact": "art",
     "evidence": "ev",
     "finding": "fnd",
+    "workspace": "ws",
 }
 
 
@@ -74,3 +75,7 @@ def evidence_id(*seed: str) -> str:
 
 def finding_id(*seed: str) -> str:
     return new_id("finding", *seed)
+
+
+def workspace_id(*seed: str) -> str:
+    return new_id("workspace", *seed)
