@@ -107,14 +107,12 @@ def _load_registry(tools_dir: str) -> ToolRegistry:
 
 def _load_policy(policy_file: str) -> Policy:
     """Load a policy.yaml if present; otherwise the fail-closed default."""
-    if policy_file and os.path.isfile(policy_file):
-        try:
-            import yaml
-            with open(policy_file, "r", encoding="utf-8") as fh:
-                return Policy.from_dict(yaml.safe_load(fh).get("policy", {}))
-        except Exception as exc:
-            print(f"warning: could not load policy {policy_file!r}: {exc}", file=sys.stderr)
-    return Policy()
+    from .policy.engine import load_policy as engine_load_policy
+    try:
+        return engine_load_policy(policy_file or None)
+    except Exception as exc:
+        print(f"warning: could not load policy {policy_file!r}: {exc}", file=sys.stderr)
+        return Policy()
 
 
 def _build_service(registry: ToolRegistry, policy: Policy) -> tuple[ToolExecutionService, AuthorizedWorkspaceRegistry]:

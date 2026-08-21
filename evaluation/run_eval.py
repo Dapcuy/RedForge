@@ -65,6 +65,15 @@ def _run_fresh_scan(target: str, kind: str) -> str:
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300, cwd=ROOT)
     if proc.returncode not in (0, 1):
         raise RuntimeError(f"scan failed: {proc.stderr[:500]}")
+    # Keep the DB so the caller can inspect it, but register it for cleanup on
+    # interpreter exit (best-effort).
+    import atexit
+
+    def _cleanup() -> None:
+        import shutil
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    atexit.register(_cleanup)
     return db
 
 

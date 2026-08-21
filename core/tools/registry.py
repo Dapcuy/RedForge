@@ -77,6 +77,9 @@ class ToolRegistry:
         if not schema:
             return  # no schema -> no extra validation
         known = set(schema)
+        # `env` is a SYSTEM argument (filtered by the execution service's
+        # allowlist); it is never a tool argument.
+        known.add("env")
         provided = set(arguments)
         unknown = provided - known
         if unknown:

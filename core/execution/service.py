@@ -244,7 +244,14 @@ class ToolExecutionService:
             self.policy.check_privileged(tool.image)
 
             run_id = tool_run_id(request.context.scan_id, request.id)
-            ctx = RunContext(run_id=run_id, timeout_s=limits.timeout_s, env=request.arguments.get("env", {}))
+            # Env var whitelist: only vars explicitly allowed by policy OR the
+            # tool manifest reach the container. Anything else is dropped so an
+            # agent/Hermes cannot smuggle DOCKER_HOST, HTTP_PROXY, etc.
+            requested_env = dict(request.arguments.get("env", {}) or {})
+            allowed_env: set[str] = set(self.policy.policy.env_allowlist)
+            allowed_env.update((tool.runtime.get("env_allowlist") or []) if tool.runtime else [])
+            safe_env = {k: v for k, v in requested_env.items() if k in allowed_env}
+            ctx = RunContext(run_id=run_id, timeout_s=limits.timeout_s, env=safe_env)
 
             # 4. Build the runtime Workspace: RedForge-managed per-run tmp dir
             #    OUTSIDE the source tree; the source tree stays read-only.

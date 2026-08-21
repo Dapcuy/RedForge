@@ -199,8 +199,12 @@ class Orchestrator:
                 else:
                     plan = break_repository_into_tasks(target_value, profile)
                     tasks = plan.tasks
+                    # Keep each task's relative target (per-area granularity).
+                    # The workspace_id below stays the authorized root; the
+                    # tool path is derived from the task's relative target.
                     for t in tasks:
-                        t.target = target_value
+                        if not t.target:
+                            t.target = target_value
 
                 dispatch = dispatcher.dispatch(tasks)
                 result.findings.extend(dispatch.findings)
@@ -223,7 +227,11 @@ class Orchestrator:
                             result.evidence.append(self._last_evidence)
                         except Exception as exc:
                             partial = True
-                            result.error = f"tool execution failed: {exc}"
+                            # Collect ALL tool errors, not just the last one.
+                            if result.error:
+                                result.error += f" | tool execution failed: {exc}"
+                            else:
+                                result.error = f"tool execution failed: {exc}"
 
                 # Evidence must be correlated into the engine BEFORE findings persist.
                 engine.correlate(result.evidence)

@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import sqlite3
+import threading
 from typing import Literal
 
 from ..evidence.models import Evidence, EvidenceType
@@ -84,16 +85,31 @@ class BlobStore:
 
 
 class SqliteStore:
-    """Single SQLite database implementing every repository Protocol."""
+    """Single SQLite database implementing every repository Protocol.
+
+    Thread-safety: a single connection is shared across threads (the execution
+    service runs tools concurrently). All public methods are serialized with a
+    re-entrant lock; transactions use the same lock so a transaction cannot be
+    interleaved by another thread.
+    """
 
     def __init__(self, db_path: str, blob_store: BlobStore | None = None) -> None:
         self.db_path = db_path
         self.blob_store = blob_store
         self._in_transaction = False
+        self._lock = threading.RLock()
         os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
-        self._conn = sqlite3.connect(db_path)
+        self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._init_schema()
+
+    @staticmethod
+    def _locked(method):
+        """Serialize a public method with the store lock."""
+        def wrapper(self, *args, **kwargs):
+            with self._lock:
+                return method(self, *args, **kwargs)
+        return wrapper
 
     def _commit(self) -> None:
         """Commit unless a transaction is active (the transaction owns the commit)."""
@@ -420,3 +436,14 @@ class SqliteStore:
             if f is not None:
                 out.append(f)
         return out
+
+
+# Serialize all public repository methods with the store lock (thread-safety
+# for concurrent tool execution). Private/dunder methods are left untouched.
+for _name in dir(SqliteStore):
+    if _name.startswith("_"):
+        continue
+    _attr = getattr(SqliteStore, _name)
+    if callable(_attr):
+        setattr(SqliteStore, _name, SqliteStore._locked(_attr))
+del _name, _attr

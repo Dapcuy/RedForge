@@ -115,9 +115,12 @@ def score_benchmark(
     negative = benchmark.get("negative", [])
     res.expected = len(expected)
 
-    # Normalize finding statuses.
-    confirmed = [f for f in findings if str(f.get("status", "")).lower() in ("confirmed", "validated")]
-    validated = [f for f in findings if str(f.get("status", "")).lower() in ("validated", "confirmed")]
+    # Normalize finding statuses. Lifecycle: candidate -> analyzed ->
+    # validated -> confirmed. `confirmed` and `validated` are DISTINCT stages
+    # (a confirmed finding was also validated, but a validated finding is not
+    # necessarily confirmed).
+    confirmed = [f for f in findings if str(f.get("status", "")).lower() == "confirmed"]
+    validated = [f for f in findings if str(f.get("status", "")).lower() == "validated"]
     res.confirmed = len(confirmed)
     res.validated = len(validated)
     res.total_findings = len(findings)

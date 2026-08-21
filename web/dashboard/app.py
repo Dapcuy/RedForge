@@ -55,20 +55,25 @@ INDEX_HTML = """<!doctype html>
   </table>
 </main>
 <script>
+function esc(v) {
+  return String(v ?? '').replace(/[&<>"']/g, c => (
+    {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
+  ));
+}
 async function load() {
   const r = await fetch('/api/findings');
   const data = await r.json();
   const counts = {critical:0, high:0, medium:0, low:0, informational:0};
   data.findings.forEach(f => counts[f.severity] = (counts[f.severity]||0)+1);
   document.getElementById('cards').innerHTML = Object.entries(counts)
-    .map(([k,v]) => `<div class="card"><div class="num">${v}</div><div class="label">${k}</div></div>`).join('');
+    .map(([k,v]) => `<div class="card"><div class="num">${esc(v)}</div><div class="label">${esc(k)}</div></div>`).join('');
   document.getElementById('findings').innerHTML = data.findings.map(f => `
     <tr>
-      <td><span class="sev ${f.severity}">${f.severity}</span></td>
-      <td>${f.title}</td>
-      <td>${f.affected_component || '—'}</td>
-      <td>${f.status}</td>
-      <td>${f.confidence}</td>
+      <td><span class="sev ${esc(f.severity)}">${esc(f.severity)}</span></td>
+      <td>${esc(f.title)}</td>
+      <td>${esc(f.affected_component) || '—'}</td>
+      <td>${esc(f.status)}</td>
+      <td>${esc(f.confidence)}</td>
     </tr>`).join('');
 }
 load();

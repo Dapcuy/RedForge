@@ -71,6 +71,9 @@ class Policy:
     limits: ResourceLimits = field(default_factory=ResourceLimits)
     per_tool_limits: dict[str, dict[str, Any]] = field(default_factory=dict)
     allowed_capabilities: list[str] = field(default_factory=list)  # empty = allow all
+    # Env vars allowed to pass from a ToolRequest into the container.
+    # Empty = strict: NO agent-supplied env vars reach the runtime.
+    env_allowlist: list[str] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> Policy:
@@ -88,6 +91,7 @@ class Policy:
             limits=ResourceLimits.from_dict(limits),
             per_tool_limits=dict(data.get("per_tool", {}) or {}),
             allowed_capabilities=list(restrictions.get("allowed_capabilities", []) or []),
+            env_allowlist=list(restrictions.get("env_allowlist", []) or []),
         )
 
 
