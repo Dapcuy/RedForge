@@ -83,7 +83,8 @@ def _build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--tools-dir", default=DEFAULT_TOOLS_DIR)
     scan.add_argument("--policy-file", default=DEFAULT_POLICY_FILE)
     scan.add_argument("--db", default=None, help="SQLite path for persistence (default: in-memory)")
-    scan.add_argument("--agent", action="store_true", help="run the reference agent loop")
+    scan.add_argument("--no-agent", action="store_true",
+                      help="skip the reference agent loop (profile + skill resolution only)")
 
     return parser
 
@@ -332,8 +333,8 @@ def _cmd_scan(args: argparse.Namespace) -> int:
     )
 
     agent = None
-    if args.agent:
-        from .agents.generic import agents as _agents
+    if not getattr(args, "no_agent", False):
+        from agents.generic import agents as _agents
         agent = _agents.ReconAgent() if is_url else _agents.CodeAgent()
 
     result = orch.run(

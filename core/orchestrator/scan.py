@@ -212,6 +212,10 @@ class Orchestrator:
                             # authorized workspace_id from the orchestrator.
                             if authorized_ws_id:
                                 req.workspace_id = authorized_ws_id
+                                # Source tools (semgrep/slither/foundry) scan
+                                # the workspace root by default; inject the
+                                # relative path unless the agent set one.
+                                req.arguments.setdefault("path", ".")
                             outcome = self.execution.execute(req)
                             run = outcome.tool_run
                             self._persist_tool_records(run, outcome.artifacts, sid, req.source)

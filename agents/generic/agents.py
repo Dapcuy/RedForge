@@ -44,6 +44,9 @@ class ReconAgent(Agent):
             result.tool_requests.append(AgentToolRequest(
                 capability="technology-detection", target_value=target,
             ))
+            result.tool_requests.append(AgentToolRequest(
+                capability="vulnerability-scanning", target_value=target,
+            ))
         return result
 
 
@@ -77,7 +80,9 @@ class CodeAgent(Agent):
                     ))
             if src.strip():
                 result.tool_requests.append(AgentToolRequest(
-                    capability="source-scanning", target_value=f,
+                    capability="source-scanning",
+                    # No target_value: the orchestrator injects the authorized
+                    # workspace root (opaque id) for source scans.
                 ))
         return result
 

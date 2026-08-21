@@ -115,17 +115,23 @@ class Dispatcher:
         from ..models import Target, TargetKind
 
         target_value = tr.target_value or getattr(task, "target", "") or ""
-        target = Target(TargetKind.URL, target_value) if target_value else Target(TargetKind.SOURCE_DIR, "")
+        is_url_value = target_value.startswith(("http://", "https://"))
+        target = Target(TargetKind.URL if is_url_value else TargetKind.SOURCE_DIR, target_value)
         ctx = self.context or ExecutionContext(
             project_id="", target_id="", scan_id="",
         )
+        arguments = dict(tr.arguments or {})
+        # URL tools (httpx/nuclei/ffuf) take the target via -u; set it unless
+        # the agent already provided an explicit argument.
+        if target.kind == TargetKind.URL and "u" not in arguments:
+            arguments["u"] = target_value
         return ToolRequest(
             id=tool_request_id("agent", self.context.scan_id if self.context else "", tr.capability),
             capability=tr.capability,
             target=target,
             context=ctx,
             tool_name=tr.tool_name,
-            arguments=tr.arguments,
+            arguments=arguments,
             source=f"agent:{agent_name}",
         )
 
