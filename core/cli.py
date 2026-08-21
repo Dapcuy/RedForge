@@ -355,7 +355,7 @@ def _cmd_scan(args: argparse.Namespace) -> int:
         elif agent_name == "hermes-live":
             from agents.hermes.live import HermesLiveAgent
             from agents.hermes.llm_backends import AnthropicLLM, OllamaLLM, OpenAILLM
-            from core.agents.llm import LLMClient
+            from core.agents.llm import LLMBudget, LLMClient
 
             backend = getattr(args, "llm_backend", "anthropic")
             model = getattr(args, "llm_model", None)
@@ -371,7 +371,11 @@ def _cmd_scan(args: argparse.Namespace) -> int:
             capabilities = sorted({
                 cap for tool in registry.tools.values() for cap in tool.capabilities
             })
-            agent = HermesLiveAgent(llm=llm, capabilities=capabilities)
+            budget = LLMBudget(
+                max_llm_calls=policy.llm_max_iterations * max(1, 3),
+                max_tool_requests=policy.llm_max_tool_requests,
+            )
+            agent = HermesLiveAgent(llm=llm, capabilities=capabilities, budget=budget)
         else:
             from agents.generic import agents as _agents
             agent = _agents.ReconAgent() if is_url else _agents.CodeAgent()

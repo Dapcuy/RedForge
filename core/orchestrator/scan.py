@@ -206,32 +206,64 @@ class Orchestrator:
                         if not t.target:
                             t.target = target_value
 
-                dispatch = dispatcher.dispatch(tasks)
-                result.findings.extend(dispatch.findings)
-
+                # Agent reasoning loop: dispatch -> execute tools -> feed the
+                # results back to agents that support observe() (e.g. a live
+                # LLM agent), then re-dispatch. Static agents run one round.
+                feedback_cap = 1
                 if self.execution is not None:
-                    for req in dispatch.tool_requests:
-                        try:
-                            # The agent never picks the host path; it gets the
-                            # authorized workspace_id from the orchestrator.
-                            if authorized_ws_id:
-                                req.workspace_id = authorized_ws_id
-                                # Source tools (semgrep/slither/foundry) scan
-                                # the workspace root by default; inject the
-                                # relative path unless the agent set one.
-                                req.arguments.setdefault("path", ".")
-                            outcome = self.execution.execute(req)
-                            run = outcome.tool_run
-                            self._persist_tool_records(run, outcome.artifacts, sid, req.source)
-                            result.tool_runs.append(run)
-                            result.evidence.append(self._last_evidence)
-                        except Exception as exc:
-                            partial = True
-                            # Collect ALL tool errors, not just the last one.
-                            if result.error:
-                                result.error += f" | tool execution failed: {exc}"
-                            else:
-                                result.error = f"tool execution failed: {exc}"
+                    feedback_cap = max(1, self.execution.policy.policy.llm_max_iterations)
+                rounds = min(getattr(agent, "feedback_rounds", 1), feedback_cap)
+
+                for round_no in range(rounds):
+                    dispatch = dispatcher.dispatch(tasks)
+
+                    if not dispatch.tool_requests:
+                        break  # agent concluded; nothing to execute or feed back
+
+                    executed_summaries: list[dict[str, str | int]] = []
+                    if self.execution is not None:
+                        for req in dispatch.tool_requests:
+                            try:
+                                # The agent never picks the host path; it gets the
+                                # authorized workspace_id from the orchestrator.
+                                if authorized_ws_id:
+                                    req.workspace_id = authorized_ws_id
+                                    # Source tools (semgrep/slither/foundry) scan
+                                    # the workspace root by default; inject the
+                                    # relative path unless the agent set one.
+                                    req.arguments.setdefault("path", ".")
+                                outcome = self.execution.execute(req)
+                                run = outcome.tool_run
+                                self._persist_tool_records(run, outcome.artifacts, sid, req.source)
+                                result.tool_runs.append(run)
+                                result.evidence.append(self._last_evidence)
+                                executed_summaries.append({
+                                    "capability": req.capability,
+                                    "tool": getattr(run, "tool_name", req.tool_name or ""),
+                                    "status": getattr(getattr(run, "status", None), "value", "unknown"),
+                                    "artifacts": len(outcome.artifacts),
+                                })
+                            except Exception as exc:
+                                partial = True
+                                # Collect ALL tool errors, not just the last one.
+                                if result.error:
+                                    result.error += f" | tool execution failed: {exc}"
+                                else:
+                                    result.error = f"tool execution failed: {exc}"
+                                executed_summaries.append({
+                                    "capability": req.capability,
+                                    "tool": req.tool_name or "",
+                                    "status": "error",
+                                    "error": str(exc)[:300],
+                                })
+
+                    # Feed the (untrusted) tool results back for the next round.
+                    if round_no < rounds - 1 and hasattr(agent, "observe"):
+                        agent.observe(executed_summaries)
+
+                # Findings are judged once, after all rounds (the engine keeps
+                # every candidate added across rounds; judge() dedups).
+                result.findings.extend(engine.judge())
 
                 # Evidence must be correlated into the engine BEFORE findings persist.
                 engine.correlate(result.evidence)

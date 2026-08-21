@@ -94,6 +94,9 @@ class HermesLiveAgent(Agent):
         self.budget = budget or LLMBudget()
         self.max_prompt_chars = max_prompt_chars
         self.usage = LLMUsage()
+        # How many dispatch->execute->observe rounds the orchestrator may run
+        # with this agent (capped by policy llm_max_iterations at scan time).
+        self.feedback_rounds = min(3, max(1, self.budget.max_llm_calls))
         self._memory: list[str] = []  # prior turns + feedback (already wrapped)
 
     # -- feedback channel (called between analyze() turns) -----------------

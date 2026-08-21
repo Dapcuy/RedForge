@@ -74,6 +74,10 @@ class Policy:
     # Env vars allowed to pass from a ToolRequest into the container.
     # Empty = strict: NO agent-supplied env vars reach the runtime.
     env_allowlist: list[str] = field(default_factory=list)
+    # LLM agent reasoning caps (fail-stop budgets, enforced by the orchestrator
+    # and the live agent). max_iterations also bounds feedback rounds.
+    llm_max_iterations: int = 4
+    llm_max_tool_requests: int = 20
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> Policy:
@@ -81,10 +85,11 @@ class Policy:
         scope = data.get("scope", {}) or {}
         restrictions = data.get("restrictions", {}) or {}
         limits = data.get("limits", {}) or {}
+        llm = restrictions.get("llm", {}) or {}
         return cls(
             allowed_targets=list(scope.get("allowed_targets", []) or []),
             allow_local_targets=bool(scope.get("allow_local_targets", True)),
-            external_targets=bool(scope.get("allow_external_targets", False)),
+            external_targets=bool(restrictions.get("allow_external_targets", False)),
             destructive_actions=bool(restrictions.get("destructive_actions", False)),
             privileged_runtime=bool(restrictions.get("privileged_runtime", False)),
             max_parallel_runs=int(restrictions.get("max_parallel_runs", 4)),
@@ -92,6 +97,8 @@ class Policy:
             per_tool_limits=dict(data.get("per_tool", {}) or {}),
             allowed_capabilities=list(restrictions.get("allowed_capabilities", []) or []),
             env_allowlist=list(restrictions.get("env_allowlist", []) or []),
+            llm_max_iterations=max(1, int(llm.get("max_iterations", 4))),
+            llm_max_tool_requests=max(1, int(llm.get("max_tool_requests", 20))),
         )
 
 

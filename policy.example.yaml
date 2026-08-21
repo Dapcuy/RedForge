@@ -14,6 +14,9 @@ policy:
     privileged_runtime: false
     max_parallel_runs: 4
     # allowed_capabilities: []      # empty = allow all
+    # llm:                          # budgets for live LLM agents (fail-stop)
+    #   max_iterations: 4           # also bounds agent feedback rounds
+    #   max_tool_requests: 20
   limits:
     timeout_s: 300
     cpu: 1.0

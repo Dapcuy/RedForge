@@ -61,7 +61,10 @@ class DispatchResult:
 
 class Dispatcher:
     def __init__(self, engine: FindingEngine | None = None, context: ExecutionContext | None = None) -> None:
-        self.engine = engine or FindingEngine()
+        # NB: `engine if engine is not None else ...` — an empty FindingEngine
+        # is falsy (it defines __len__), so `engine or ...` would silently
+        # discard the caller's engine and break correlation.
+        self.engine = engine if engine is not None else FindingEngine()
         self.context = context
         self._agents: dict[str, Agent] = {}
         self._areas: dict[str, str] = {}  # area -> agent name
