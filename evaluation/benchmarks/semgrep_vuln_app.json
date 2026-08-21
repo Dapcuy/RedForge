@@ -1,0 +1,15 @@
+{
+  "name": "semgrep_vuln_app",
+  "description": "Deterministic vulnerable Flask fixture scanned by Semgrep (code-runtime). Expected: 4 known vulnerability classes.",
+  "target_kind": "source-dir",
+  "expected": [
+    ["app.py", "hardcoded"],
+    ["app.py", "eval"],
+    ["app.py", "shell"],
+    ["app.py", "sql"]
+  ],
+  "negative": [
+    ["app.py", "cryptographically secure"]
+  ],
+  "notes": "Fixtures are intentional. Negative list guards against false positives for unrelated patterns."
+}

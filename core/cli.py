@@ -19,6 +19,7 @@ import argparse
 import json
 import os
 import sys
+from pathlib import Path
 from typing import Any
 
 from .execution.service import ToolExecutionService
@@ -85,6 +86,10 @@ def _build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--db", default=None, help="SQLite path for persistence (default: in-memory)")
     scan.add_argument("--no-agent", action="store_true",
                       help="skip the reference agent loop (profile + skill resolution only)")
+    scan.add_argument("--agent", default=None, choices=["recon", "code", "hermes"],
+                      help="agent to run (default: recon for url, code for source-dir)")
+    scan.add_argument("--emit", default=None,
+                      help="Hermes EmitRequest JSON (inline or file path)")
 
     return parser
 
@@ -332,10 +337,22 @@ def _cmd_scan(args: argparse.Namespace) -> int:
         evidence_repo=db, findings_repo=db, execution=svc,
     )
 
-    agent = None
+    agent: Any = None
     if not getattr(args, "no_agent", False):
-        from agents.generic import agents as _agents
-        agent = _agents.ReconAgent() if is_url else _agents.CodeAgent()
+        agent_name = getattr(args, "agent", None)
+        if agent_name == "hermes":
+            from agents.hermes.adapter import HermesAgent
+            emit = None
+            emit_arg = getattr(args, "emit", None)
+            if emit_arg:
+                if Path(emit_arg).exists():
+                    emit = Path(emit_arg).read_text(encoding="utf-8")
+                else:
+                    emit = emit_arg
+            agent = HermesAgent(emit_payload=emit)
+        else:
+            from agents.generic import agents as _agents
+            agent = _agents.ReconAgent() if is_url else _agents.CodeAgent()
 
     result = orch.run(
         target_value=args.target,

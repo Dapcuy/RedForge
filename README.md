@@ -76,7 +76,8 @@ to a live LLM, and the dashboard is a skeleton.
 | `redforge/web3-runtime:latest` | ❌ not built | ❌ slither/foundry/echidna/mythril not validated |
 | `redforge/privileged:latest` | ❌ not built | ❌ nmap not validated (policy-gated) |
 
-**Not wired yet:** live LLM/Hermes agent (adapter exists, no live connection).
+**Wired (live bridge validated):** Hermes agent adapter + EmitRequest contract (`redforge scan --agent hermes --emit ...`).
+**Not wired yet:** autonomous observe→reason→execute loop (single-agent loop next).
 **Dashboard:** stdlib skeleton, not a full UI.
 
 ### Hardening status (P0/P1/P2)
